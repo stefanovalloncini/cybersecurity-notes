@@ -18,23 +18,10 @@
 \newcommand{\sample}{\xleftarrow{\$}}       % uniform random sampling
 
 % =============================================================
-% Licence and front matter
+% Licence
 % =============================================================
-\RequirePackage{needspace}                  % keep a heading with its table
-\RequirePackage{pifont}                     % \ding{51} check, \ding{55} cross
-\RequirePackage{ccicons}                    % Creative Commons icons
 \RequirePackage[type=CC,modifier=by-nc-sa,version=4.0,imagewidth=7em]{doclicense}
 
-\newcommand{\yes}{\textcolor{themegreen}{\ding{51}}}
-\newcommand{\no}{\textcolor{red!70!black}{\ding{55}}}
-
-% Unnumbered front-matter chapter: in the TOC, PDF bookmarks and page header.
-\newcommand{\frontchapter}[2]{%
-  \chapter*{#1}\phantomsection\label{#2}%
-  \addcontentsline{toc}{chapter}{#1}%
-  \markboth{#1}{#1}}
-% Link to a front-matter chapter by name, with its page: \fmref{fm:ai}{AI Use Disclosure}
-\newcommand{\fmref}[2]{\hyperref[#1]{\emph{#2}}, p.~\pageref{#1}}
 
 % =============================================================
 % Title page metadata (set in config/config.tex)

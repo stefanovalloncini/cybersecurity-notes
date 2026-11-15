@@ -30,7 +30,7 @@ Chapter numbers (`#`) follow this repository; the official module number (e.g. `
 cybersecurity-notes/
 ├── main.tex                 # master document (parts + chapters + bibliography)
 ├── config/config.tex        # title, author, year, repo URL, solutions toggle
-├── frontmatter/             # copyright page, AI use disclosure, licence
+├── frontmatter/             # copyright page
 ├── chapters/
 │   ├── 01_fundamentals_security_cryptography.tex   # chapter wrapper (subfile)
 │   ├── 01_fundamentals/     # one file per topic, \input by the wrapper
@@ -84,5 +84,3 @@ Large language models (LLMs) were used in preparing these notes.
 - **Notes** (text, figures, exercises): [CC BY-NC-SA 4.0](LICENSE). You may share and adapt them with credit, not commercially, and adapted versions must use the same license.
 - **LaTeX template and build files** (`styles/`, `Makefile`, `.githooks/`): [MIT](LICENSE-CODE).
 - Course slides, recordings and handouts belong to their authors and the University of Bologna; they are not in this repository and not covered by these licenses.
-
-A plain-language summary is on the *Licence* page of the PDF (`frontmatter/license.tex`).
