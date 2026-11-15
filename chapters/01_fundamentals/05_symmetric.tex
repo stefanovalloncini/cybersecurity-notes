@@ -1,0 +1,647 @@
+% Source: Romandini, 04_SymmetricEncryption
+% Lectures: 14 Nov 2026, morning (from the Caesar cipher) and afternoon (up to authenticated encryption)
+\section{Symmetric Encryption}
+\label{sec:symmetric}
+
+In symmetric (secret-key) encryption the sender and the receiver share the \emph{same} key $K$: $C = \Enc_K(P)$ and $P = \Dec_K(C)$. The algorithms are public (Kerckhoffs' principle, \cref{sec:crypto-intro}); all the secrecy is in the key. This section follows the historical path: classical ciphers and why they fall to statistics, the one-time pad as the theoretical ideal, then the two practical families (stream and block ciphers), DES as the reference block cipher, brute force, the modes of operation, and authenticated encryption.
+
+% Shared TikZ styles for this section (prefixed to avoid clashes)
+\tikzset{
+    symbox/.style={draw, minimum width=1.2cm, minimum height=0.6cm, font=\small, inner sep=2pt},
+    symenc/.style={symbox, fill=gray!15, rounded corners=2pt},
+    symxor/.style={circle, draw, inner sep=0pt, minimum size=4mm,
+        path picture={\draw (path picture bounding box.north) -- (path picture bounding box.south)
+                             (path picture bounding box.west) -- (path picture bounding box.east);}},
+    symlab/.style={font=\small, inner sep=1pt},
+}
+
+% ------------------------------------------------------------------
+\subsection{Classical ciphers}
+
+\subsubsection{The Caesar cipher}
+
+Julius Caesar was among the first to use cryptography. The Caesar cipher is a \textbf{substitution cipher}: each letter of the plaintext is replaced by a fixed other letter, obtained by a \emph{cyclic right shift} of the alphabet; decryption is the cyclic left shift.
+
+\begin{definition}[Caesar cipher]
+Let $\mathrm{pos}(\alpha) \in \{0,\dots,25\}$ be the position of letter $\alpha$ in the alphabet, $\mathrm{chr}(j)$ the letter in position $j$, and $k$ the key (the shift). For the $i$-th plaintext letter $m_i$ and ciphertext letter $c_i$:
+\[
+    \Enc_k(m_i) = \mathrm{chr}\bigl((\mathrm{pos}(m_i) + k) \bmod 26\bigr), \qquad
+    \Dec_k(c_i) = \mathrm{chr}\bigl((\mathrm{pos}(c_i) - k) \bmod 26\bigr).
+\]
+With $k = 3$: \texttt{a}$\to$\texttt{D}, \texttt{b}$\to$\texttt{E}, \dots, \texttt{z}$\to$\texttt{C}.
+\end{definition}
+
+\paragraph{Why it is weak.} Brute force is trivial because (i)~the algorithms are known, (ii)~there are only \textbf{25 useful keys} (shift 0 is the identity), and (iii)~the plaintext language is known and easy to recognise. The attacker decrypts with every key and keeps the one that produces meaningful text: among 25 candidates, usually only one (at most two) reads as natural language.
+
+\begin{example}[Cryptanalysis of \texttt{AJSN ANIN ANHN}]
+Shifting back by $1,2,3,\dots$ gives \texttt{zirm zmhm zmgm}, \texttt{yhql ylgl ylfl}, \texttt{xgpk xkfk xkek}, \texttt{wfoj wjej wjdj}, and with a shift of 5: \texttt{veni vidi vici}. Only one candidate is meaningful, so the key is $k=5$.
+\end{example}
+
+\subsubsection{Monoalphabetic substitution and frequency analysis}
+
+Instead of a shift, the key can be an arbitrary \emph{permutation} of the alphabet (e.g.\ \texttt{a}$\to$\texttt{Q}, \texttt{b}$\to$\texttt{W}, \dots). There are $26! \approx 4 \times 10^{26} \approx 2^{88}$ keys, so brute force is no longer practical. However, the cipher is still \textbf{monoalphabetic}: the same plaintext letter always becomes the same ciphertext letter, so the \emph{statistics} of the language survive encryption.
+
+\begin{definition}[Frequency analysis]
+Statistical cryptanalysis that compares the relative frequency of symbols (single letters, then pairs and triples) in the ciphertext with their known frequency in the plaintext language, and maps the most frequent ones onto each other.
+\end{definition}
+
+In English the most frequent letters are \texttt{e} ($\approx 12.7\%$), \texttt{t} ($\approx 9.1\%$), then \texttt{a}, \texttt{o}, \texttt{i}, \texttt{n}, \texttt{s}, \texttt{h}; the rarest are \texttt{v}, \texttt{k}, \texttt{j}, \texttt{x}, \texttt{q}, \texttt{z}. The most common digram is \texttt{th} and the most common trigram \texttt{the}.
+
+\begin{example}[Breaking a substitution cipher]
+In the ciphertext from the slides (\texttt{UZQSOVUOHXMOPVGPOZPEVSGZWSZOPFPESXUDBMETSXAIZVUEP\dots}) the counts give:
+\begin{itemize}
+    \item \texttt{P} ($13.3\%$) and \texttt{Z} ($11.7\%$) are the most frequent: probably \texttt{e} and \texttt{t};
+    \item \texttt{S}, \texttt{U}, \texttt{O}, \texttt{M}, \texttt{H}, \texttt{D} probably correspond to \texttt{a}, \texttt{o}, \texttt{i}, \texttt{n}, \texttt{s}, \texttt{h};
+    \item the rarest, \texttt{A}, \texttt{B}, \texttt{G}, \texttt{Y}, \texttt{I}, \texttt{J}, probably correspond to \texttt{v}, \texttt{k}, \texttt{j}, \texttt{x}, \texttt{q}, \texttt{z}.
+\end{itemize}
+Digrams resolve the ambiguities: the most common pair in the ciphertext is \texttt{ZW}, so \texttt{Z}$=$\texttt{t}, \texttt{W}$=$\texttt{h}, hence \texttt{P}$=$\texttt{e} and \texttt{ZWP} is \texttt{the}. The rest follows by trial and error.
+\end{example}
+
+For a Caesar cipher frequency analysis is even easier: plot the ciphertext letter histogram and slide it over the English one until the peaks align; the offset is the key. The lecturer stressed that this works better the \emph{longer} the ciphertext: a single word is hard to break statistically, but in a long text the frequency profile emerges clearly.
+
+\subsubsection{Polyalphabetic and polygraphic ciphers}
+
+\begin{definition}[Polyalphabetic cipher]
+A cipher that uses \emph{several} substitution alphabets, chosen according to the position of the letter in the plaintext (typically via a repeating key). The best-known example is the \textbf{Vigenère cipher}: $c_i = (m_i + k_{i \bmod \ell}) \bmod 26$, where $k_0 \dots k_{\ell-1}$ is a keyword of length $\ell$.
+\end{definition}
+
+\begin{example}[Vigenère, from the slides]
+Key \texttt{gcai} (repeated), plaintext \texttt{dadybeca}:
+\[
+\begin{array}{l@{\quad}cccccccc}
+\text{key}        & g & c & a & i & g & c & a & i \\
+\text{plaintext}  & d & a & d & y & b & e & c & a \\
+\text{ciphertext} & J & C & D & G & H & G & C & I
+\end{array}
+\]
+e.g.\ $\texttt{d}+\texttt{g} = 3+6 = 9 = \texttt{J}$, $\texttt{y}+\texttt{i} = 24+8 = 32 \equiv 6 = \texttt{G}$. Note that the two \texttt{d}'s become \texttt{J} and \texttt{D}: the same letter is no longer always mapped to the same letter, which flattens the frequency profile.
+\end{example}
+
+Statistical attacks are still possible but harder. The weak point is that the key is short and \emph{repeats}: once the attacker guesses the period $\ell$, letters at distance $\ell$ are encrypted with the same alphabet, and the ciphertext splits into $\ell$ independent Caesar ciphers, each broken by frequency analysis.
+
+\begin{definition}[Polygraphic (block) substitution]
+Substitute \emph{blocks} of letters instead of single letters (e.g.\ with blocks of 3: \texttt{AAA}$\to$\texttt{SOM}, \texttt{AAB}$\to$\texttt{PLW}, \dots). This hides the frequencies of single letters and pairs, but identical blocks still map to identical blocks, so block frequencies leak (the same flaw we will meet again in ECB mode).
+\end{definition}
+
+\subsubsection{Enigma}
+
+Polyalphabetic substitution is the basis of the \emph{rotor machines} of World War II, such as the German \textbf{Enigma} and the Japanese \emph{Purple}. Enigma (patented in 1918) was a portable electro-mechanical device:
+\begin{itemize}
+    \item a \textbf{plugboard} wired to perform an initial letter substitution;
+    \item \textbf{three rotors} set to a daily configuration; each rotor is a substitution, and one or more rotors \emph{step} at each key press, so the same letter is encrypted differently every time;
+    \item the signal goes through the rotors, is reflected, and comes back, so encryption and decryption are the same operation.
+\end{itemize}
+The plugboard and the rotors define the key, with about $1.6 \times 10^{20}$ (${\approx}\,2^{67}$) possible settings.
+
+\paragraph{How it was broken.} Building on earlier work by the Polish cryptologists Rejewski, Różycki, and Zygalski, the British team at Bletchley Park led by Alan Turing and Gordon Welchman decoded thousands of messages per day from the early 1940s, with electro-mechanical \enquote{Bombes} (also built by the US Navy). Two weaknesses were decisive:
+\begin{itemize}
+    \item \textbf{No letter is ever encrypted to itself} (a consequence of the reflector). Seeing a \texttt{G} in the ciphertext rules out \texttt{G} as plaintext at that position, which prunes the search space.
+    \item \textbf{Known plaintext (cribs).} Messages had predictable content (e.g.\ a weather report starting with the word for \enquote{weather}). The Bombes did not search all settings; they only looked for rotor configurations that turn the known word into the observed ciphertext and discarded the rest.
+\end{itemize}
+
+\begin{remark}
+$10^{20}$ keys was enormous for hand work but is small today: a modern computer could search it. Modern keys have hundreds of bits. Breaking Enigma is widely considered to have been decisive for the Allied victory.
+\end{remark}
+
+% ------------------------------------------------------------------
+\subsection{The one-time pad and perfect secrecy}
+
+\begin{definition}[One-time pad]
+Let the message be an $n$-bit string $m$. The key $k \sample \{0,1\}^n$ is chosen \emph{truly} at random (not pseudo-random), is \emph{as long as the message}, and is \emph{used only once}. Then
+\[
+    c = \Enc_k(m) = m \xor k, \qquad m = \Dec_k(c) = c \xor k.
+\]
+\end{definition}
+
+XOR outputs 0 when the two bits are equal and 1 when they differ. It is its own inverse: $(m \xor k) \xor k = m$, which is why the same operation encrypts and decrypts. The one-time pad is a \emph{stream} cipher: each ciphertext bit depends only on the corresponding plaintext bit and key bit. The same idea works on letters by adding the key modulo 26.
+
+\begin{definition}[Perfect secrecy]
+An encryption scheme has \textbf{perfect (information-theoretic) secrecy} if the ciphertext gives the attacker no information about the plaintext, \emph{even with unlimited computing power}. Formally, for every distribution of $M$, every message $m$ and every ciphertext $c$ with $\Pr[C=c] > 0$:
+\[
+    \Pr[M = m \mid C = c] = \Pr[M = m].
+\]
+\end{definition}
+
+\begin{theorem}[Shannon \cite{shannon1949}]
+The one-time pad has perfect secrecy.
+\end{theorem}
+\begin{proof}
+Fix $n$, a message $m \in \{0,1\}^n$ and a ciphertext $c \in \{0,1\}^n$. Since $c = m \xor k$ if and only if $k = m \xor c$, and $k$ is uniform and independent of $M$,
+\[
+    \Pr[C = c \mid M = m] = \Pr[K = m \xor c] = 2^{-n}.
+\]
+This does not depend on $m$, so $\Pr[C=c] = \sum_{m'} \Pr[C=c \mid M=m']\Pr[M=m'] = 2^{-n}$. By Bayes' theorem,
+\[
+    \Pr[M=m \mid C=c] = \frac{\Pr[C=c \mid M=m]\,\Pr[M=m]}{\Pr[C=c]} = \frac{2^{-n}\Pr[M=m]}{2^{-n}} = \Pr[M=m]. \qedhere
+\]
+\end{proof}
+
+\begin{example}[Every plaintext is possible]
+\leavevmode
+\begin{itemize}
+    \item \emph{1 bit}: $c = m \xor k$ with $k$ a random bit. Whether $m$ is 0 or 1, $c$ is 0 or 1 with probability $1/2$: seeing $c$ says nothing about $m$.
+    \item \emph{Letters} (key added mod 26): the ciphertext \texttt{YMOGB} decrypts to \texttt{HELLO} with key \texttt{RIDVN} and to \texttt{WORLD} with key \texttt{CYXVY} (e.g.\ $\texttt{Y}-\texttt{R} = 24-17 = 7 = \texttt{H}$, $\texttt{Y}-\texttt{C} = 22 = \texttt{W}$). Both keys are equally likely, so the attacker cannot tell which message was sent. In fact \emph{every} five-letter word is a possible decryption.
+\end{itemize}
+\end{example}
+
+\paragraph{Perfect secrecy is not about brute force.} As the lecturer put it, perfect secrecy does not mean that brute force is impossible; it means brute force is \emph{useless}. With a 1000-bit message and a 1000-bit key, trying all $2^{1000}$ keys produces all $2^{1000}$ possible plaintexts, each equally plausible, so the attacker learns nothing.
+
+\paragraph{Why the key must be as long as the message.} With a 1000-bit message and only a 100-bit key, there are at most $2^{100}$ keys, hence at most $2^{100}$ candidate plaintexts for a given ciphertext out of the $2^{1000}$ possible messages. Most messages are ruled out, so the ciphertext \emph{does} leak information. The lecturer's toy example: a 2-bit key repeated over an 8-bit message allows only 4 candidate plaintexts out of $2^8 = 256$, while an 8-bit key allows them all. Shannon proved in general that perfect secrecy requires at least as many keys as messages, i.e.\ a key at least as long as the message. (He said he will not ask this counting argument at the exam, but the intuition matters.)
+
+\paragraph{One-time pad versus real ciphers.} Real ciphers such as AES-128 use a short key for long messages. For a given ciphertext, typically only \emph{one} key yields a meaningful plaintext, so brute force would eventually find it. What protects us is that $2^{128}$ keys are far too many to try: this is \textbf{computational secrecy} (secure against attackers with realistic resources), as opposed to the information-theoretic secrecy of the one-time pad.
+
+\paragraph{Advantages and limitations.}
+\begin{itemize}
+    \item \textbf{Advantage}: with a truly random key the ciphertext gives no information about the plaintext (perfect secrecy).
+    \item \textbf{Key length}: the key is as long as the message; to encrypt 1~GB we need 1~GB of key.
+    \item \textbf{One time only}: reusing the key leaks the XOR of the plaintexts (see below).
+    \item \textbf{Key distribution}: the key must be agreed upon beforehand through a secure channel. The price of perfect secrecy is distributing and storing as much key as data.
+\end{itemize}
+For these reasons the one-time pad is more a theoretical reference than a practical solution.
+
+\begin{remark}[Key reuse: the \enquote{two-time pad}]
+If the same key encrypts two messages, $c_1 \xor c_2 = (m_1 \xor k) \xor (m_2 \xor k) = m_1 \xor m_2$. The key cancels out: the attacker obtains the XOR of the two plaintexts, which, given the redundancy of natural language or file formats, is usually enough to recover both. If one plaintext is known, the other is immediate: $m_2 = c_1 \xor c_2 \xor m_1$.
+\end{remark}
+
+% ------------------------------------------------------------------
+\subsection{Stream ciphers and block ciphers}
+
+Practical symmetric ciphers belong to two families.
+
+\subsubsection{Stream ciphers}
+
+\begin{definition}[Stream cipher]
+Encrypts a data stream one bit or one byte at a time, by XORing it with a \textbf{keystream} produced by a pseudo-random generator seeded with the key: $c_i = m_i \xor z_i$, with $z = \mathrm{PRG}(K)$.
+\end{definition}
+
+A stream cipher imitates the one-time pad: a short key is \enquote{expanded} into a long keystream. In the ideal case the keystream would be truly random and as long as the plaintext (and then the cipher would be unbreakable), but it would have to be shared in advance through a secure channel. Design requirements:
+\begin{enumerate}
+    \item \textbf{Large period.} A PRNG is deterministic and its output eventually repeats. The period must be (at least) as long as the messages, otherwise the same keystream segment is reused within the message.
+    \item \textbf{Statistical randomness.} The keystream should approximate a true random stream as closely as possible (e.g.\ roughly as many 1s as 0s; see the randomness tests in \cref{sec:base-mechanisms}).
+    \item \textbf{Long key.} The output depends only on the key, so brute force tries all keys: a 20-bit key gives only $2^{20}$ keystreams to test. The key must be long enough to make this infeasible.
+\end{enumerate}
+
+\begin{remark}[Why the period matters]
+A student asked what the period has to do with security. If the keystream has period $p$ (e.g.\ \texttt{0111 0111 0111\dots} has period 4) and the same plaintext fragment (say \texttt{hello}) appears at two positions that differ by a multiple of $p$, it is XORed with the same keystream bits and produces the \emph{same} ciphertext fragment: the attacker sees repetitions, exactly as with key reuse in the one-time pad. The longer the period, the less likely this alignment becomes. Practical generators have periods far longer than any message.
+\end{remark}
+
+\begin{example}[WEP]
+\emph{Wired Equivalent Privacy}, the original (now deprecated) Wi-Fi security protocol, used the RC4 stream cipher. For every packet the sender picks an \textbf{initialisation vector} (IV), concatenates it with the shared key to form the seed, and XORs the PRNG output with the plaintext; the IV is sent \emph{in clear} with the ciphertext so the receiver can rebuild the same keystream.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, node distance=5mm and 8mm]
+    \node[symbox] (iv) {IV};
+    \node[symbox, right=of iv] (k) {key $K$};
+    \node[symenc, below=6mm of $(iv)!0.5!(k)$] (seed) {seed $= \mathrm{IV} \concat K$};
+    \node[symenc, below=5mm of seed] (prng) {PRNG (RC4)};
+    \node[symxor, below=6mm of prng] (x) {};
+    \node[symbox, left=10mm of x] (p) {plaintext};
+    \node[symbox, right=10mm of x] (c) {$\mathrm{IV} \concat$ ciphertext};
+    \draw[->] (iv) -- (seed); \draw[->] (k) -- (seed);
+    \draw[->] (seed) -- (prng); \draw[->] (prng) -- node[symlab, right] {keystream} (x);
+    \draw[->] (p) -- (x); \draw[->] (x) -- (c);
+\end{tikzpicture}
+\end{center}
+
+The IV is only 24 bits, so it repeats after $2^{24} \approx 16.7$ million packets (hours on a busy network), and some 802.11 cards reset it to 0 at every power cycle. A repeated IV means a repeated seed, hence a repeated keystream: the two-time pad problem above.
+\end{example}
+
+\subsubsection{Block ciphers}
+
+\begin{definition}[Block cipher]
+Encrypts a fixed-size block of $b$ bits as a whole into a ciphertext block of the same size, using the shared key: $\Enc_K : \{0,1\}^b \to \{0,1\}^b$ is a key-dependent permutation. Typical block sizes are 64 bits (DES) and 128 bits (AES).
+\end{definition}
+
+A message longer than one block is split into blocks, and the last one is \textbf{padded} if needed (filled with extra bytes up to a multiple of the block size). Unlike stream ciphers, block ciphers do not simply XOR: each block goes through rounds of permutations, substitutions, and other operations. How consecutive blocks are combined is defined by the \emph{mode of operation} (\cref{subsec:modes}); some modes turn a block cipher into a stream cipher.
+
+\begin{table}[H]
+\centering
+\caption{Stream versus block ciphers.}
+\label{tab:stream-vs-block}
+\begin{tabularx}{\textwidth}{@{}l X X@{}}
+\toprule
+ & Stream ciphers & Block ciphers \\
+\midrule
+Pros & Fast and simple (just XOR), small hardware; no padding, work on one byte at a time & Standard and well studied (AES); modes of operation add flexibility \\
+Cons & Never reuse the keystream; no integrity: flipped ciphertext bits flip plaintext bits unnoticed & Last block needs padding; unsafe alone (ECB leaks patterns): a mode is needed \\
+Examples & RC4 (broken), ChaCha20 & DES, 3DES, AES \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{remark}[Bit flips and integrity]
+Bits can flip in transit even without an attacker (radio noise, collisions). Network checksums catch accidental errors, but neither stream ciphers nor the classical block modes detect \emph{deliberate} modifications: confidentiality and integrity are separate goals (see authenticated encryption, \cref{subsec:ae}).
+\end{remark}
+
+% ------------------------------------------------------------------
+\subsection{The Data Encryption Standard (DES)}
+
+\paragraph{History.} In 1973 the US National Bureau of Standards (now NIST) published a call for proposals. IBM submitted a cipher derived from its internal product \emph{Lucifer}; a version modified with changes suggested by the NSA was adopted as \textbf{DES}, certified, and made public in 1977. It was the first robust, NSA-certified cipher that the research community could study openly.
+
+\paragraph{Characteristics.} Symmetric block cipher with 64-bit blocks and 64-bit keys, of which only \textbf{56 bits are used}: the other 8 are parity bits.
+
+\subsubsection{Basic operations}
+Block ciphers are built by composing simple bit-level operations (\cref{tab:des-ops}).
+
+\begin{table}[H]
+\centering
+\caption{Basic operations used in DES.}
+\label{tab:des-ops}
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Operation & Effect \\
+\midrule
+Permutation & Reorders the bits: each input bit determines exactly one output bit \\
+Substitution & Replaces a block of input bits with a unique block of output bits (e.g.\ \texttt{000}$\to$\texttt{010}); in DES these are the S-boxes \\
+Expansion & Some input bits are repeated in the output, so the output is longer \\
+Choice (contraction) & Some input bits are dropped, so the output is shorter \\
+Permuted choice & A choice followed by a permutation \\
+Circular shift & Rotates the bits left or right \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Structure}
+\begin{enumerate}
+    \item \textbf{Initial permutation} (IP) of the 64-bit plaintext block. The tables are public (e.g.\ the first output bit is input bit 58); IP adds no security, it only rearranges bits.
+    \item \textbf{Key schedule.} \emph{Permuted choice 1} drops the 8 parity bits (64 $\to$ 56) and splits the key into two 28-bit halves $C_0, D_0$. For each round $i$, both halves are rotated left by 1 or 2 positions and \emph{permuted choice 2} selects 48 bits: the round key $K_i$.
+    \item \textbf{16 rounds} of a Feistel network, each using its own $K_i$.
+    \item A final \textbf{32-bit swap} of the two halves and the \textbf{inverse initial permutation} IP$^{-1}$ give the 64-bit ciphertext.
+\end{enumerate}
+
+\begin{definition}[Feistel round]
+The 64-bit block is split into two 32-bit halves $L_{i-1}, R_{i-1}$. Round $i$ computes
+\[
+    L_i = R_{i-1}, \qquad R_i = L_{i-1} \xor F(R_{i-1}, K_i).
+\]
+In DES the round function $F$ (i)~expands $R_{i-1}$ from 32 to 48 bits (E table), (ii)~XORs it with the 48-bit round key, (iii)~passes the result through eight \textbf{S-boxes} that substitute and contract it back to 32 bits, and (iv)~applies a permutation P.
+\end{definition}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[symbox, minimum width=2cm] (L) at (0,0) {$L_{i-1}$ (32)};
+    \node[symbox, minimum width=2cm] (R) at (5,0) {$R_{i-1}$ (32)};
+    \node[symxor] (x) at (0,-1.6) {};
+    \node[symenc, minimum width=2.2cm, align=center] (F) at (2.5,-1.6) {$F$\\[-1pt]\scriptsize E, $\xor K_i$, S-boxes, P};
+    \coordinate (j) at (5,-1.6);
+    \node[symlab] (k) at (2.5,-0.45) {$K_i$ (48)};
+    \draw[->] (k) -- (F);
+    \draw[->] (R) -- (j) -- (F.east);
+    \draw[->] (F.west) -- (x);
+    \draw[->] (L) -- (x);
+    \node[symbox, minimum width=2cm] (Li) at (0,-4) {$L_i$};
+    \node[symbox, minimum width=2cm] (Ri) at (5,-4) {$R_i$};
+    \draw[->] (x.south) -- (0,-2.4) -- (5,-3.3) -- (Ri.north);
+    \draw[->] (j) -- (5,-2.4) -- (0,-3.3) -- (Li.north);
+\end{tikzpicture}
+\caption{One Feistel round of DES. The halves swap at every round; the key schedule (not shown) derives the 48-bit $K_i$.}
+\label{fig:feistel}
+\end{figure}
+
+\begin{remark}[Why Feistel networks are convenient]
+Decryption uses the \emph{same} circuit with the round keys in reverse order: from $L_i, R_i$ one recovers $R_{i-1} = L_i$ and $L_{i-1} = R_i \xor F(L_i, K_i)$. So $F$ does not need to be invertible. The lecturer did not go into the details of the round: the point is that repeating simple operations (XOR, permutation, expansion, substitution) 16 times scrambles the plaintext thoroughly, and we trust the public analysis of the design rather than its secrecy.
+\end{remark}
+
+\subsubsection{DES replacements}
+\begin{itemize}
+    \item \textbf{DES} has been considered insecure since 1999 because of its short key: 56 bits can be brute-forced (dedicated hardware did it in days in 1998, and in under a day in 1999).
+    \item \textbf{Triple-DES} (3DES) applies DES three times (48 rounds in total) with 64-bit blocks. It is slow, and its small block size is a weakness on large volumes of data; NIST withdrew it in 2024.
+    \item \textbf{Blowfish} and \textbf{IDEA}: legacy ciphers with 64-bit blocks.
+    \item \textbf{AES} (Advanced Encryption Standard): chosen by NIST through an open public competition (the Rijndael algorithm, standardised in 2001). Block of \textbf{128 bits}, keys of \textbf{128, 192, or 256 bits}. It is the current standard.
+    \item \textbf{ChaCha20}: a modern stream cipher, very fast in software.
+\end{itemize}
+
+\begin{remark}[Block size versus key size]
+In class it was said that AES-256 uses 256-bit blocks. That is not correct: AES \emph{always} has 128-bit blocks; the number in \enquote{AES-128/192/256} is the \emph{key} length (it also changes the number of rounds: 10, 12, or 14). Also note that a modern stream cipher such as ChaCha20 does not rely on the operating system's random generator to produce its keystream (another point suggested in class): the keystream is a deterministic function of the key and a nonce. Both stream and block ciphers need a random key, and both need a fresh nonce/IV.
+\end{remark}
+
+% ------------------------------------------------------------------
+\subsection{Brute-force attacks and key length}
+
+\begin{definition}[Exhaustive key search]
+Try every possible key until the decryption makes sense. With an $n$-bit key there are $2^n$ keys; on average the right one is found after $2^{n-1}$ attempts.
+\end{definition}
+
+Generating the candidate keys is easy; the cost is running the decryption algorithm for each of them and checking the result, so the time grows exponentially with the key length (\cref{tab:bruteforce}).
+
+\begin{table}[H]
+\centering
+\caption{Average time for exhaustive key search.}
+\label{tab:bruteforce}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Key size & Number of keys & At $1$ decryption/µs & At $10^6$ decryptions/µs \\
+\midrule
+32 bits & $2^{32} \approx 4.3 \times 10^{9}$ & 35.8 minutes & 2.15 ms \\
+56 bits (DES) & $2^{56} \approx 7.2 \times 10^{16}$ & 1142 years & 10 hours \\
+128 bits (AES-128) & $2^{128} \approx 3.4 \times 10^{38}$ & $5.4 \times 10^{24}$ years & $5.4 \times 10^{18}$ years \\
+168 bits (3DES) & $2^{168} \approx 3.7 \times 10^{50}$ & $5.9 \times 10^{36}$ years & $5.9 \times 10^{30}$ years \\
+26 letters (permutation) & $26! \approx 4 \times 10^{26}$ & $6.4 \times 10^{12}$ years & $6.4 \times 10^{6}$ years \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{example}[Brute force today]
+A \$250,000 cluster can test about 350 billion guesses per second, but it guesses \emph{password hashes}, a much easier problem than searching a key space (passwords are short and predictable). For AES-128, even at $10^{18}$ keys per second, the search takes about $3.4 \times 10^{38} / 10^{18} \approx 3.4 \times 10^{20}$~s, i.e.\ about $10^{13}$ years: roughly a thousand times the age of the universe.
+\end{example}
+
+\paragraph{Quantum computers.} The security of symmetric ciphers does not rest on a mathematical problem that a quantum algorithm can solve (unlike RSA, \cref{sec:asymmetric}); the best known attack remains a search over the keys. Grover's algorithm speeds up this search quadratically ($\sqrt{2^n} = 2^{n/2}$ steps), which \emph{halves the effective key length}: AES-128 offers about 64 bits of security against a quantum attacker, AES-256 about 128 bits. The countermeasure is simply to use longer keys: \textbf{AES-256 is considered quantum-safe}. No quantum computer today comes anywhere close to running such an attack.
+
+\begin{remark}
+In class this was phrased as \enquote{for a quantum computer, breaking 128 bits is like breaking 64 bits for a classical one}, hence the advice to use AES-256 for long-lived secrets. This is right as an order of magnitude. In practice Grover's algorithm parallelises poorly, so AES-128 is still considered adequate for most uses today.
+\end{remark}
+
+% ------------------------------------------------------------------
+\subsection{Modes of operation}
+\label{subsec:modes}
+
+\begin{definition}[Mode of operation]
+A technique that specifies how to apply a block cipher to messages longer than one block, adapting the algorithm to an application. NIST defined five modes (ECB, CBC, CFB, OFB, CTR), usable with any symmetric block cipher (3DES, AES).
+\end{definition}
+
+Notation: $P_1,\dots,P_N$ are the plaintext blocks, $C_1,\dots,C_N$ the ciphertext blocks, $E_K$/$D_K$ the block cipher's encryption and decryption with key $K$.
+
+\subsubsection{Electronic Codebook (ECB)}
+
+\[
+    C_i = E_K(P_i), \qquad P_i = D_K(C_i).
+\]
+Each block is encrypted independently with the same key. The name comes from the fact that, for a given key, there is a fixed ciphertext for every $b$-bit plaintext block, like a giant codebook.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \foreach \i/\x in {1/0, 2/3, N/7.5} {
+        \node[symbox] (p\i) at (\x,0) {$P_{\i}$};
+        \node[symenc] (e\i) at (\x,-1.2) {$E_K$};
+        \node[symbox] (c\i) at (\x,-2.4) {$C_{\i}$};
+        \draw[->] (p\i) -- (e\i);
+        \draw[->] (e\i) -- (c\i);
+    }
+    \node at (5.25,-1.2) {$\cdots$};
+\end{tikzpicture}
+\caption{ECB encryption: every block is encrypted independently.}
+\label{fig:ecb}
+\end{figure}
+
+\paragraph{The problem.} With a single key, \textbf{identical plaintext blocks give identical ciphertext blocks}, inside one message and across messages. The ciphertext leaks the structure of the plaintext. The lecturer's example: if an attacker learns once that $C_1$ corresponds to \texttt{hello}, every future occurrence of $C_1$ in any conversation encrypted with that key reveals \texttt{hello}. The classic picture is the Linux penguin encrypted in ECB: the colours are scrambled, but every pixel of the same colour maps to the same ciphertext, so the outline of the penguin remains clearly visible (\cref{ex:image-demo}).
+
+\paragraph{Where ECB is acceptable.} It is fast and simple (no IV, blocks independent and parallelisable, a lost block does not affect the others). It is suitable only for very short data that fits in one block and has no patterns, such as \textbf{encrypting a single random key}. Never use it for general messages.
+
+\subsubsection{Cipher Block Chaining (CBC)}
+
+\[
+    C_0 = \mathrm{IV}, \qquad C_i = E_K(P_i \xor C_{i-1}), \qquad P_i = D_K(C_i) \xor C_{i-1}.
+\]
+The input to the cipher is the XOR of the current plaintext block and the \emph{previous ciphertext block}; the first block uses an initialisation vector.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[symbox] (iv) at (-1.6,-0.8) {IV};
+    \foreach \i/\x in {1/0, 2/3.2, 3/6.4} {
+        \node[symbox] (p\i) at (\x,0) {$P_{\i}$};
+        \node[symxor] (x\i) at (\x,-0.8) {};
+        \node[symenc] (e\i) at (\x,-1.8) {$E_K$};
+        \node[symbox] (c\i) at (\x,-3) {$C_{\i}$};
+        \draw[->] (p\i) -- (x\i);
+        \draw[->] (x\i) -- (e\i);
+        \draw[->] (e\i) -- (c\i);
+    }
+    \draw[->] (iv) -- (x1);
+    \draw[->] (c1.east) -- ++(0.6,0) |- (x2.west);
+    \draw[->] (c2.east) -- ++(0.6,0) |- (x3.west);
+    \draw[->] (c3.east) -- ++(0.6,0) |- ++(0.6,2.2) node[right, symlab] {$\cdots$};
+\end{tikzpicture}
+\caption{CBC encryption: each ciphertext block is chained into the next.}
+\label{fig:cbc}
+\end{figure}
+
+Chaining makes every ciphertext block depend on all previous plaintext blocks, so equal plaintext blocks inside a message produce different ciphertext blocks. The IV makes every \emph{message} different too: without it (or with a fixed IV) the same message would always encrypt to the same ciphertext.
+
+\begin{remark}[Requirements on the IV]
+The IV is \textbf{not secret}: it is sent in clear with the ciphertext (it cannot be encrypted, or the receiver could not decrypt it). It must be \textbf{random, used only once, and unpredictable}. Reusing an IV re-creates the ECB problem for messages that start the same way; a \emph{predictable} IV enables the BEAST attack.
+\end{remark}
+
+Properties: encryption is sequential (block $i$ needs $C_{i-1}$); decryption can be parallelised since all $C_{i-1}$ are known; padding is required.
+
+\paragraph{The BEAST attack (2011).} In TLS 1.0, IVs were not random: the IV of each record was the \emph{last ciphertext block of the previous record}. TLS splits data into records (a 1000-byte message may travel as ten 100-byte records), which logically form one long CBC chain. The attacker who sniffs the traffic therefore \emph{knows in advance} the IV that will be used for the next record. If the attacker can also inject chosen plaintext into the victim's stream (e.g.\ through JavaScript in the victim's browser), CBC with a predictable IV allows checking guesses about earlier blocks.
+
+\begin{example}[BEAST step by step]
+Bob encrypts with DES-CBC (8-byte blocks). Block~1 is \texttt{Dearest}, block~2 is the secret \texttt{Kimberly}. Dan sniffs $C_1 = \texttt{ed d7 a5 09 67 d9 89 26}$ and $C_2 = \texttt{f3 3c 02 a7 b8 fd 22 7d}$, so he knows that $C_2 = E_K(P_2 \xor C_1)$.
+
+Dan suspects that $P_2 = \texttt{Kimberly}$ (call his guess $G$). Simply injecting $G$ does not work: it would be XORed with a different chaining value and produce an unrelated block. But Dan knows the chaining value that will be used for his injected block (the last ciphertext block sent, say $R = \texttt{fe dc ba 98 76 54 32 10}$). He injects
+\[
+    P^{*} = G \xor C_1 \xor R = \texttt{58 62 72 f3 74 ff d7 4f}.
+\]
+Bob's software computes $E_K(P^{*} \xor R) = E_K(G \xor C_1 \xor R \xor R) = E_K(G \xor C_1)$, because XORing $R$ twice cancels it. If the guess is right, $G \xor C_1 = P_2 \xor C_1$ and the output is exactly $C_2 = \texttt{f3 3c 02 a7\dots}$; otherwise it is unrelated. Dan never learns the key, but he can \emph{confirm} guesses about secret plaintext (e.g.\ a cookie, byte by byte).
+\end{example}
+
+The fix is a fresh, unpredictable IV for every record (TLS 1.1 onwards). The lecturer said not to memorise the byte-level details; what matters is the principle: \emph{a predictable IV lets the attacker make the server encrypt chosen data under a known chaining value, and compare the result with intercepted ciphertext}.
+
+\subsubsection{Cipher Feedback (CFB)}
+
+CFB turns the block cipher into a (self-synchronising) \textbf{stream cipher}. A shift register initialised with the IV is encrypted; the leftmost $s$ bits of the output are XORed with the next $s$ bits of plaintext; the resulting ciphertext bits are shifted into the register for the next step:
+\[
+    C_i = P_i \xor \mathrm{MSB}_s\bigl(E_K(\text{register}_i)\bigr), \qquad \text{register}_{i+1} = \text{shift-in}(\text{register}_i, C_i).
+\]
+$s$ can be 1, 8, or the whole block (128 for AES). Only the encryption function of the cipher is used, both to encrypt and to decrypt. No padding is needed. Like CBC, it needs the previous ciphertext: encryption is sequential, and losing $C_1$ prevents decrypting $P_2$.
+
+\subsubsection{Output Feedback (OFB)}
+
+Similar to CFB, but the feedback is the previous \emph{cipher output}, not the ciphertext, and full blocks are used:
+\[
+    O_0 = \text{nonce}, \qquad O_i = E_K(O_{i-1}), \qquad C_i = P_i \xor O_i.
+\]
+The keystream $O_1, O_2, \dots$ depends only on the key and the nonce, not on the data, so it can be \textbf{precomputed}, and a missing ciphertext block does not prevent decrypting the others. Computing $O_n$ still requires $n$ encryptions in sequence.
+
+\subsubsection{Counter (CTR)}
+
+\[
+    C_i = P_i \xor E_K(\mathit{ctr}_i), \qquad \mathit{ctr}_i = \mathit{ctr}_1 + (i-1).
+\]
+The block cipher encrypts a counter that starts from a nonce and is incremented for each block; the output is XORed with the plaintext.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \foreach \i/\x/\c in {1/0/{$\mathit{ctr}$}, 2/3.6/{$\mathit{ctr}+1$}, 3/7.2/{$\mathit{ctr}+2$}} {
+        \node[symbox] (n\i) at (\x,0) {\c};
+        \node[symenc] (e\i) at (\x,-1.1) {$E_K$};
+        \node[symxor] (x\i) at (\x,-2.1) {};
+        \node[symbox, minimum width=0.8cm] (p\i) at (\x-1.2,-2.1) {$P_{\i}$};
+        \node[symbox] (c\i) at (\x,-3.1) {$C_{\i}$};
+        \draw[->] (n\i) -- (e\i);
+        \draw[->] (e\i) -- (x\i);
+        \draw[->] (p\i) -- (x\i);
+        \draw[->] (x\i) -- (c\i);
+    }
+    \node at (9,-1.1) {$\cdots$};
+\end{tikzpicture}
+\caption{CTR encryption: the encrypted counter is a keystream, and blocks are fully independent.}
+\label{fig:ctr}
+\end{figure}
+
+Advantages listed on the slides:
+\begin{itemize}
+    \item \textbf{hardware and software efficiency}: blocks are independent, so encryption and decryption can be fully parallelised;
+    \item \textbf{preprocessing}: the encrypted counters can be computed before the data arrives;
+    \item \textbf{random access}: block $n$ can be decrypted directly, just by computing $\mathit{ctr}_1 + n - 1$, without touching the previous blocks (in OFB one must run the chain $n$ times);
+    \item \textbf{provable security} (as secure as the other modes) and \textbf{simplicity} (only $E_K$ is needed, no padding).
+\end{itemize}
+
+\begin{remark}[Questions from class on CTR and OFB]
+\leavevmode
+\begin{itemize}
+    \item \emph{How does the receiver get the keystream?} Both parties know the key and the nonce, and the encryption function is public, so the receiver recomputes exactly the same chain of encrypted values and XORs it with the ciphertext.
+    \item \emph{Do all counters have to be sent?} No: only the initial value (the nonce) is sent; the others are obtained by incrementing it.
+    \item \emph{Must the counter be random?} The lecturer answered \enquote{every IV and every counter should be random}. More precisely: in CTR (and OFB) the requirement is that a nonce/counter value is \textbf{never reused} with the same key. If two messages use overlapping counter values, they are XORed with the same keystream, which is again the two-time pad. A random starting value is a common way to obtain uniqueness. In CBC (and CFB) the IV must also be \emph{unpredictable}, as the BEAST attack shows.
+\end{itemize}
+\end{remark}
+
+\subsubsection{Comparison and error propagation}
+
+What happens if one ciphertext bit is flipped, by noise or by an attacker?
+\begin{itemize}
+    \item \textbf{ECB}: only the corresponding plaintext block is garbled.
+    \item \textbf{CBC}: the corresponding plaintext block is garbled, and the \emph{same bit} flips in the next plaintext block (because $C_i$ is XORed into $P_{i+1}$). Block $i+2$ is correct again: the error is self-limiting.
+    \item \textbf{CFB}: the same bit flips in the corresponding block, and the next block is garbled (the corrupted ciphertext sits in the shift register). Then it recovers.
+    \item \textbf{OFB, CTR}: only the same plaintext bit flips: \textbf{no propagation}.
+\end{itemize}
+No propagation suits noisy channels (e.g.\ satellite links), but it also lets an attacker flip \emph{chosen} plaintext bits without being noticed: a confidentiality-only mode gives no integrity.
+
+\begin{remark}
+In class the game was played at block level (\enquote{if $C_1$ is corrupted, can I still decrypt $C_2$?}), and a corrupted block was described as undecryptable in every mode. For CBC, CFB, OFB, and CTR, a single flipped bit in the \emph{XOR part} affects only that bit of the plaintext, as listed above; a whole block is garbled only where the corrupted bits pass through the block cipher. A \emph{lost} block (rather than a flipped bit) prevents decrypting the next block in CBC and CFB, but not in ECB, OFB, or CTR.
+\end{remark}
+
+\begin{table}[H]
+\centering
+\caption{The five NIST modes of operation.}
+\label{tab:modes}
+\small
+\begin{tabularx}{\textwidth}{@{}l c c >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{2.3cm} c >{\raggedright\arraybackslash}X@{}}
+\toprule
+Mode & Par.\ enc & Par.\ dec & Effect of 1 flipped bit in $C_i$ & IV / nonce & Padding & Typical use \\
+\midrule
+ECB & yes & yes & $P_i$ garbled & none & yes & A single value (e.g.\ a key) \\
+CBC & no  & yes & $P_i$ garbled, same bit flips in $P_{i+1}$ & random, unpredictable & yes & General-purpose block transmission (legacy TLS) \\
+CFB & no  & yes & same bit flips in $P_i$, $P_{i+1}$ garbled & random, unpredictable & no & General-purpose stream transmission \\
+OFB & no\textsuperscript{*} & no\textsuperscript{*} & same bit flips in $P_i$ only & unique nonce & no & Stream over noisy channels (satellite) \\
+CTR & yes & yes & same bit flips in $P_i$ only & unique nonce & no & High speed, random access; basis of GCM \\
+\bottomrule
+\end{tabularx}
+
+\smallskip
+{\footnotesize \textsuperscript{*} The OFB keystream is sequential, but it does not depend on the data and can be precomputed.}
+\end{table}
+
+\begin{example}[Encrypting an image: the course demo]
+\label{ex:image-demo}
+The course material includes a Python demo that encrypts the same image with AES in different modes, using standard libraries:
+\begin{itemize}
+    \item with \textbf{ECB} the output is scrambled, but the borders and shapes of the image are still recognisable, because every block of identical pixels encrypts to the same ciphertext (the \enquote{same palette}: if blue always becomes orange, the drawing survives);
+    \item with \textbf{CBC} and \textbf{CTR} the output is pure noise: the same plaintext block encrypts differently depending on its position.
+\end{itemize}
+The attacker does not need the details of the image: the fact that equal inputs give equal outputs is enough to leak information.
+\end{example}
+
+% ------------------------------------------------------------------
+\subsection{Authenticated encryption}
+\label{subsec:ae}
+
+The modes above protect \textbf{confidentiality only}: an attacker can modify the ciphertext (e.g.\ flip bits in CTR or OFB, which flips exactly the same plaintext bits) without the receiver noticing.
+
+\begin{definition}[Authenticated encryption (AE / AEAD)]
+A scheme that encrypts and authenticates in one operation, providing confidentiality, integrity, and authenticity of the message. Decryption either returns the plaintext or \emph{rejects} a ciphertext that has been tampered with. AEAD (\emph{with associated data}) also authenticates data that is sent in clear, such as packet headers.
+\end{definition}
+
+The standard choices today are \textbf{AES-GCM} (CTR-mode encryption plus a polynomial MAC called GHASH) and \textbf{ChaCha20-Poly1305} (the ChaCha20 stream cipher plus the Poly1305 MAC). The generic idea is to combine a cipher with a MAC (\cref{sec:base-mechanisms}); the safe way to combine them is \emph{encrypt-then-MAC}: encrypt, then compute the MAC over the ciphertext, and check the MAC before decrypting.
+
+\begin{remark}
+In class it was said that these modes \enquote{use the HMAC seen before}. Encrypt-then-HMAC is indeed a valid generic construction, but GCM and ChaCha20-Poly1305 use dedicated, faster MACs (GHASH and Poly1305), not HMAC.
+\end{remark}
+
+\begin{remark}[Never reuse a nonce]
+With the same key, a nonce must never be reused. In AES-GCM, nonce reuse means keystream reuse (it is CTR underneath), which leaks the XOR of the plaintexts; it also leaks the authentication key, allowing the attacker to forge messages.
+\end{remark}
+
+\subsection{Symmetric cryptography today}
+
+\begin{itemize}
+    \item \textbf{AES}: hardware-accelerated almost everywhere (dedicated CPU instructions). AES-128 is adequate; AES-256 for long-lived secrets and as a margin against quantum attacks.
+    \item \textbf{ChaCha20-Poly1305}: fast in software, used where AES hardware is missing (e.g.\ some mobile devices).
+    \item \textbf{Legacy, to avoid}: DES, 3DES, RC4, Blowfish, IDEA, and the ECB mode.
+    \item \textbf{Quantum computers} only halve the key strength of symmetric ciphers: AES-256 stays secure. The quantum threat is mainly to public-key cryptography (\cref{sec:asymmetric}).
+\end{itemize}
+
+\begin{summary}
+\begin{itemize}
+    \item Caesar (25 keys) falls to brute force; monoalphabetic substitution ($26!$ keys) falls to frequency analysis; polyalphabetic ciphers (Vigenère, Enigma) are harder but leak through key periodicity and known plaintext.
+    \item The one-time pad ($c = m \xor k$, truly random key as long as the message, used once) has perfect secrecy: every plaintext is equally likely given the ciphertext. Key reuse leaks $m_1 \xor m_2$.
+    \item Real ciphers have only computational secrecy: a short key, safe because $2^{128}$ keys cannot be searched.
+    \item Stream ciphers XOR a pseudo-random keystream (long period, good randomness, long key); block ciphers transform fixed blocks (DES 64/56 bits, AES 128-bit blocks with 128/192/256-bit keys).
+    \item DES: initial permutation, 16 Feistel rounds with 48-bit round keys, inverse permutation. Insecure since 1999 (56-bit key); replaced by AES.
+    \item Grover halves effective key length: use AES-256 for quantum resistance.
+    \item Modes: ECB leaks patterns; CBC chains blocks with a random, unpredictable IV (predictable IV $\Rightarrow$ BEAST); CFB, OFB, CTR turn a block cipher into a stream cipher; CTR is parallel with random access; nonces must never repeat.
+    \item Classical modes give confidentiality only; use authenticated encryption (AES-GCM, ChaCha20-Poly1305).
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+(a) Encrypt \texttt{attack} with the Caesar cipher and $k=3$. (b) The ciphertext \texttt{KHOOR} was produced with an unknown Caesar shift: find the plaintext and the key. (c) How many keys must be tried in the worst case?
+\end{exercise}
+\begin{solution}
+(a) $\texttt{a}\to\texttt{D}$, $\texttt{t}\to\texttt{W}$, $\texttt{c}\to\texttt{F}$, $\texttt{k}\to\texttt{N}$: \texttt{DWWDFN}. (b) Trying shifts back, $k=3$ gives \texttt{hello}, the only meaningful candidate. (c) 25 (the shifts 1 to 25).
+\end{solution}
+
+\begin{exercise}
+Encrypt \texttt{hello} with the Vigenère cipher and key \texttt{key} (with $\texttt{a}=0$). Why is this cipher harder to break by frequency analysis than a monoalphabetic substitution, and what is its weakness?
+\end{exercise}
+\begin{solution}
+Key stream \texttt{keyke}: $\texttt{h}+\texttt{k} = 7+10 = 17 = \texttt{R}$; $\texttt{e}+\texttt{e} = 4+4 = 8 = \texttt{I}$; $\texttt{l}+\texttt{y} = 11+24 = 35 \equiv 9 = \texttt{J}$; $\texttt{l}+\texttt{k} = 11+10 = 21 = \texttt{V}$; $\texttt{o}+\texttt{e} = 14+4 = 18 = \texttt{S}$. Ciphertext: \texttt{RIJVS}. The two \texttt{l}'s become different letters (\texttt{J}, \texttt{V}), so the letter frequencies are flattened. The weakness is that the key repeats with period 3: once the period is guessed, the letters at positions $1,4,7,\dots$ form a Caesar cipher, and so on, each broken by frequency analysis.
+\end{solution}
+
+\begin{exercise}
+A careless system encrypts two 8-bit messages with the same one-time pad key. An attacker intercepts $c_1 = \texttt{11011010}$ and $c_2 = \texttt{10001101}$, and knows that $m_1 = \texttt{10110110}$. Recover $m_2$ and the key. Which property of the one-time pad was violated?
+\end{exercise}
+\begin{solution}
+$c_1 \xor c_2 = \texttt{01010111} = m_1 \xor m_2$, so $m_2 = \texttt{01010111} \xor \texttt{10110110} = \texttt{11100001}$. The key is $k = c_1 \xor m_1 = \texttt{11011010} \xor \texttt{10110110} = \texttt{01101100}$ (check: $c_2 \xor k = \texttt{11100001} = m_2$). The key must be used only \emph{once}: reusing it cancels the key in $c_1 \xor c_2$.
+\end{solution}
+
+\begin{exercise}
+Explain what \emph{perfect secrecy} means, and why it is not achieved by AES-128 used to encrypt a 1~MB file.
+\end{exercise}
+\begin{solution}
+Perfect secrecy means that observing the ciphertext does not change the probability of any plaintext: $\Pr[M=m \mid C=c] = \Pr[M=m]$, even for an attacker with unlimited computing power. It requires at least as many keys as messages. AES-128 has $2^{128}$ keys, far fewer than the $2^{8\,388\,608}$ possible 1~MB files: for a given ciphertext only $2^{128}$ plaintexts are possible, and typically only one of them is meaningful, so an unbounded attacker could find it by brute force. AES only offers computational secrecy: the search is infeasible in practice.
+\end{solution}
+
+\begin{exercise}
+For each scenario choose a mode of operation and justify: (a) encrypting a single random 128-bit AES key; (b) a noisy satellite link where bit errors are frequent; (c) a large encrypted disk image where any block must be readable directly, using many CPU cores; (d) why should ECB never be used for a bitmap image?
+\end{exercise}
+\begin{solution}
+(a) ECB: the data is one block with no patterns, so ECB leaks nothing and needs no IV. (b) OFB or CTR: a flipped bit only flips the same plaintext bit, with no propagation (integrity must then be provided separately). (c) CTR: blocks are independent, so encryption and decryption are parallel and block $n$ can be decrypted directly from $\mathit{ctr}_1 + n - 1$. (d) In ECB identical blocks (e.g.\ areas of the same colour) give identical ciphertext blocks, so the shapes of the image remain visible (the ECB penguin).
+\end{solution}
+
+\begin{exercise}
+In CBC mode, one bit of ciphertext block $C_2$ is flipped in transit. Which plaintext blocks are affected after decryption, and how? Answer the same question for CTR mode.
+\end{exercise}
+\begin{solution}
+CBC: $P_2 = D_K(C_2) \xor C_1$ is completely garbled, since the corrupted $C_2$ goes through the block cipher; $P_3 = D_K(C_3) \xor C_2$ has exactly the same bit flipped; $P_4$ and the following blocks are correct. CTR: $P_2 = C_2 \xor E_K(\mathit{ctr}_2)$ has only that bit flipped; all other blocks are unaffected. In both cases the receiver does not notice anything without a MAC or authenticated encryption.
+\end{solution}
+
+\begin{exercise}
+(a) On average, how long does an exhaustive search of a DES key take at $10^9$ keys per second? And an AES-128 key? (b) What changes if the attacker has a large quantum computer, and how do we respond?
+\end{exercise}
+\begin{solution}
+(a) On average $2^{55} \approx 3.6 \times 10^{16}$ attempts for DES: $3.6 \times 10^{7}$~s, about 417 days (dedicated or massively parallel hardware does it in hours). AES-128: $2^{127} \approx 1.7 \times 10^{38}$ attempts, about $1.7 \times 10^{29}$~s $\approx 5 \times 10^{21}$ years. (b) Grover's algorithm reduces the search to about $2^{n/2}$ steps, so AES-128 drops to about 64-bit security. The response is to double the key length: AES-256 keeps about 128-bit security.
+\end{solution}
+
+\begin{exercise}
+Why was WEP's use of a 24-bit IV a security problem, and what is the general lesson about IVs and nonces?
+\end{exercise}
+\begin{solution}
+The seed is $\mathrm{IV} \concat K$ with a fixed $K$, so the keystream depends only on the IV. With 24 bits the IV repeats after $2^{24} \approx 16.7$ million packets (or immediately, on cards that reset it to 0), and every repetition reuses the same keystream: the XOR of two ciphertexts equals the XOR of the two plaintexts. Lesson: an IV or nonce can be public, but it must never repeat under the same key, and in CBC it must also be unpredictable (BEAST exploited a predictable IV in TLS 1.0).
+\end{solution}

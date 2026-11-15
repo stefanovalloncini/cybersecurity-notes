@@ -1,0 +1,356 @@
+% Sources: Prandini, "Introduction" slides 1-45 and lecture of 13 Nov 2026;
+%          Romandini, 01_Introduction slides and lecture of 14 Nov 2026 (morning, first part).
+\section{Security Fundamentals}
+\label{sec:security-basics}
+
+\subsection{What security is about}
+
+\begin{definition}[Computer security]
+Everything that has to do with \emph{countering deliberate actions that cause harm} to computing systems and the information they handle.
+\end{definition}
+
+Romandini gives a broader, more operational definition: cybersecurity aims to protect resources from unauthorised access, guarantee the confidentiality of information, and ensure the operation and availability of services in the face of unpredictable events. It is the \emph{set of products, services, organisational rules, and individual behaviours} that protect an organisation's information systems.
+
+Information security, IT security, and cybersecurity have slightly different nuances but are used interchangeably here.
+
+\begin{remark}[Cyber-]
+The word \emph{cyberspace} was coined by a science-fiction writer (William Gibson) for the space where computers meet the real world. Strictly speaking, \emph{cybersecurity} is the security of systems whose failure has effects in the \emph{physical} world (automated machines, critical infrastructures), whereas classic system, network, or information security deals with attacks whose effects stay behind a keyboard and a screen. In popular usage \enquote{cybersecurity} has become the catch-all term.
+\end{remark}
+
+Computer security matters well beyond the professional sphere. Our society reached its level of efficiency (distributing food, purifying water, running hospitals, railways, air traffic control) only by letting computers control these systems; going back to manual control is not compatible with our health and well-being, so society is \emph{not resilient} to their loss. If damaged, these systems are often irreplaceable (at all, or not in time to avoid serious consequences). Insecurity has a social impact and an economic one:
+\begin{itemize}
+    \item \textbf{Social}: the first documented attack on a physical system dates back to 2000 (Maroochy, Australia, waste-water treatment); in 2020 a patient died during a ransomware attack on a German hospital, because doctors could not access the systems needed to provide care (an \emph{indirect} effect of an attack confined to IT); attacks on pipelines, chemical plants, and power grids followed.
+    \item \textbf{Economic}: cybercrime is a growing, lucrative criminal business, comparable to the GDP of the largest economies in worst-case estimates. It is attractive because (i)~the skill is a \enquote{passe-partout} (whoever can break into computers can commit fraud, theft, extortion, sabotage in countless sectors, while a car thief only knows how to steal cars), and (ii)~the risk of detection and prosecution is very low (about 0.05\%): traces can be hidden and, even when followed, they cross countries with different and sometimes uncooperative jurisdictions.
+    \item On the other side, defence is a florid job market, with spending growing by 12--15\% a year.
+\end{itemize}
+
+\paragraph{Trends.} The number of serious incidents keeps growing every year, worldwide and in Italy (Clusit 2026 report), and so does the estimated cost of cybercrime. Recent examples range from ransomware against health services (NHS) to state actors pre-positioning in critical infrastructure with \emph{living-off-the-land} techniques, i.e.\ using only tools already present on the victim's systems (Volt Typhoon). A new element is \textbf{AI agents}: they can carry out attacks at a scale previously unimaginable, and they are themselves a new attack vector. In incidents reported by AI companies in 2026, agents being evaluated on capture-the-flag exercises inside sandboxes found ways to communicate with each other, coordinated to cheat, escaped the sandbox, and tried to trick the controller into declaring success; other models gained unauthorised access to real third-party systems.
+
+\subsection{Safety vs security: the dependability taxonomy}
+
+\begin{definition}[Dependability \cite{avizienis2004}]
+The ability to deliver a service that can \emph{justifiably be trusted}. Its attributes are \textbf{availability} (readiness for correct service), \textbf{reliability} (continuity of correct service), \textbf{safety} (absence of catastrophic consequences on users and environment), \textbf{confidentiality}, \textbf{integrity} (absence of improper system alterations), and \textbf{maintainability} (ability to undergo modifications and repairs).
+\end{definition}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    a/.style={draw, rounded corners, fill=themeblue!8, font=\footnotesize, minimum width=2.1cm, minimum height=0.7cm},
+    sec/.style={a, fill=themeblue!25}]
+    \node[draw, rounded corners, fill=themegray!10, font=\small\bfseries, minimum width=3cm, minimum height=0.8cm] (d) at (0,0) {Dependability};
+    \node[a]   (r)  at (-6.25,-1.6) {Reliability};
+    \node[a]   (m)  at (-3.75,-1.6) {Maintainability};
+    \node[a]   (s)  at (-1.25,-1.6) {Safety};
+    \node[sec] (av) at ( 1.25,-1.6) {Availability};
+    \node[sec] (c)  at ( 3.75,-1.6) {Confidentiality};
+    \node[sec] (i)  at ( 6.25,-1.6) {Integrity};
+    \foreach \n in {r,m,s,av,c,i} \draw (d.south) -- (\n.north);
+    \draw[decorate, decoration={brace, mirror, amplitude=6pt}, thick]
+        ($(av.south west)+(0,-0.1)$) -- node[below=7pt, font=\small\bfseries] {Security} ($(i.south east)+(0,-0.1)$);
+\end{tikzpicture}
+\caption{The dependability taxonomy \cite{avizienis2004}. Security is the combination of availability (for authorised users only), confidentiality, and integrity.}
+\label{fig:dependability}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Safety and security.}
+\label{tab:safety-security}
+\begin{tabularx}{\textwidth}{@{}l X X@{}}
+\toprule
+ & Safety & Security \\
+\midrule
+Goal          & Absence of catastrophic consequences on users and the environment & Availability for authorised users only, confidentiality, integrity \\
+Faults        & \emph{Accidental}: failures, errors, bugs & \emph{Malicious}: intrusions, malicious logic \\
+Direction     & Protect the world \emph{from} the system & Protect the system \emph{from} the world (the attacker) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{remark}
+The Italian word \emph{sicurezza} covers both safety and security, which is a common source of confusion. The two overlap in cyber-physical systems: an intrusion into the system controlling a power plant (security) can cause an explosion (safety failure). Conversely, a large cloud outage caused by an internal bug, with no attacker involved, is a safety/availability problem, not a security one.
+\end{remark}
+
+\paragraph{Absolute security is impossible.}
+\begin{quote}
+\enquote{The only truly secure system is one that is powered off, cast in a block of concrete and sealed in a lead-lined room with armed guards, and even then I have my doubts.} (Eugene H. Spafford)
+\end{quote}
+Even then, the guards can be bribed. A useful system must \emph{do} something, so security is always a trade-off with functionality.
+
+\begin{remark}[Safety and liveness properties]
+In the theory of system specification, the behaviour of a system is described by two kinds of properties: a \textbf{safety property} says that \enquote{nothing bad ever happens}, a \textbf{liveness property} says that \enquote{something good eventually happens}. Spafford's system trivially satisfies safety but not liveness: it is useless. We want systems that are \emph{live} (usable) while approaching security as closely as possible. Note that \enquote{safety} here is a formal-methods term, distinct from the dependability attribute above.
+\end{remark}
+
+\subsection{Cyber risk}
+
+Tackling security problems is essentially an exercise in \emph{risk management}.
+
+\begin{definition}[Risk]
+The potential damage, economic loss, or destruction of resources that would result from a malicious event. In its simplest form:
+\[
+    \text{Risk} = \text{Probability} \times \text{Impact}.
+\]
+\end{definition}
+
+\begin{example}[Annual risk]
+A 4\% yearly probability of suffering €15{,}000 of damage gives a risk of $0.04 \times 15{,}000 = 600$, i.e.\ €600 per year.
+\end{example}
+
+Both factors are hard to estimate:
+\begin{itemize}
+    \item \textbf{Impact} includes the immediate damage (e.g.\ a destroyed machine) and the long-lasting one: reputational damage that lowers market share, reduced production not only during the attack but during the days needed to recover.
+    \item \textbf{Probability} depends both on the weaknesses of the system and on the \emph{motivation} of the attackers.
+\end{itemize}
+
+\begin{remark}[Why cyber insurance is hard]
+The mathematics of risk management is well established, and insurers profit from it for fires or car crashes because they have solid statistics on those (mostly safety) events. For cyber risk they do not: malicious events are less predictable, and past data are incomplete because companies sometimes never notice they were attacked, or downplay attacks to protect their reputation.
+\end{remark}
+
+\begin{definition}[Countermeasure]
+A security measure adopted to \emph{prevent}, \emph{detect}, or \emph{mitigate} a threat and protect the system from vulnerabilities.
+\end{definition}
+
+\begin{itemize}
+    \item To \textbf{manage} risk we must know it: estimate the probability of every harmful event and the impact of every malicious action.
+    \item To \textbf{mitigate} risk we deploy countermeasures, which reduce the probability and/or the impact. Countermeasures must be \emph{cost-effective}: spending more than the risk they remove makes no sense.
+    \item Avoid blind spots: IT professionals tend to focus on technical countermeasures, but the \emph{human} factor is the most likely weak link. A design that is solid on paper but unacceptable or too cumbersome for users turns them into \enquote{enemies} who work around the security measures.
+\end{itemize}
+
+\begin{remark}[Security is a process, not a product]
+The phrase is Bruce Schneier's (2005): products provide some protection, but the only way to do business in an insecure world is to put in place processes that recognise the inherent insecurity of products. Security is not about assessing the current situation once and buying a product. It is a continuous cycle (understand, assess, design, gain acceptance, implement, validate, operate, review, \dots): during operation unforeseen things happen, you learn, and eventually you start again taking the new knowledge into account. Security must be designed in \emph{from the beginning}, not bolted on later; the AI industry is repeating the old mistake by thinking about the security and alignment of agents only after deploying them.
+\end{remark}
+
+\paragraph{Regulation.} Security costs money, so companies tend not to invest in it unless forced. European regulation pushes them to adopt a security-by-design mindset (\cref{tab:eu-regulation}; NIS2 and the CRA have their own module at the end of the course).
+
+\begin{table}[H]
+\centering
+\caption{EU regulatory timeline as presented in class (years are mostly those of adoption or proposal).}
+\label{tab:eu-regulation}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Year & Act \\
+\midrule
+2013 & EU Cyber Security Strategy \\
+2014 & eIDAS Regulation (electronic identification and trust services) \\
+2015 & Digital Single Market strategy \\
+2016 & GDPR; NIS Directive \\
+2019 & Cybersecurity Act (ENISA mandate, certification framework) \\
+2020 & Digital Services Act (proposal); new EU Cybersecurity Strategy \\
+2021 & Artificial Intelligence Act (proposal); Health Technology Assessment Regulation \\
+2022 & Data Governance Act; Cyber Resilience Act (proposal) \\
+2023 & NIS2 Directive (in force) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Security properties: the CIA triad}
+
+\begin{definition}[CIA triad]
+\leavevmode
+\begin{itemize}
+    \item \textbf{Confidentiality}: data, or properties of a system, are inaccessible to anyone not authorised to know them.
+    \item \textbf{Integrity}: the content and/or the \emph{origin} of a piece of data can be guaranteed to match what is believed to be correct.
+    \item \textbf{Availability}: data and services can actually be accessed when needed.
+\end{itemize}
+\end{definition}
+
+Note that integrity covers the origin of data as well, i.e.\ it includes \textbf{authenticity}. In the cryptography part (\cref{sec:crypto-intro}) the two are separated: integrity means that the receiver gets the data as sent, or can at least \emph{detect} tampering; authenticity is \enquote{integrity of the sender}, i.e.\ the receiver can be sure who created the data. Cryptography is the main tool for confidentiality, integrity, and authenticity; availability is mostly a system-level matter (resource placement, scaling, backups) that cryptography does not solve.
+
+\subsection{Threats, attacks, and attackers}
+
+\begin{definition}[Threat, attack, attacker]
+\leavevmode
+\begin{itemize}
+    \item \textbf{Threat}: a condition that could potentially compromise one or more security properties. It exists whether or not it ever materialises.
+    \item \textbf{Attack}: the action that makes a threat materialise, i.e.\ the concrete action of an agent that exploits a vulnerability to cause harm.
+    \item \textbf{Attacker}: the entity that launches the attack.
+\end{itemize}
+\end{definition}
+
+\begin{remark}[Two definitions of threat]
+Prandini defines the threat as a \emph{condition}, and stresses that it is an \emph{external} factor, not tied to the system: it stems from the opportunity and motivation of potential attackers. Example: the simple fact that people need money creates the threat of theft, whether or not you ever meet a pickpocket on the bus. Romandini (following common usage) defines it as \enquote{an \emph{event or entity} with the potential to cause harm to a system or an organisation}, so for him the attacker, or even a thunderstorm, \emph{is} a threat. The substance is the same: the threat is the potential for harm, the attack is its realisation.
+\end{remark}
+
+Threats are inextricably linked to the \emph{intentions} of potential attackers. Who might attack determines which threats are realistic:
+\begin{itemize}
+    \item \textbf{Script kiddies}: unskilled, using exploits and malware found online, sometimes unaware of the value of the target or of the damage they cause. They matter because of their sheer \emph{number}, which raises the probability factor of the risk.
+    \item \textbf{Common criminals}, and \textbf{organised crime}.
+    \item \textbf{Insiders} (dishonest or vindictive employees): particularly dangerous because many countermeasures follow the \emph{walled castle} model (everything evil is outside the perimeter) and do not apply to someone already inside.
+    \item \textbf{Reporters, whistleblowers, researchers} using attackers' methods for the public good (e.g.\ finding vulnerabilities so that users can patch), and \textbf{activists}.
+    \item \textbf{Industrial spies} (stealing intellectual property, damaging competitors), \textbf{governments and armies}.
+\end{itemize}
+
+\paragraph{Classes of threats.} Each class corresponds to the breach of a property; each type of attack can lead to one or more classes (\cref{tab:attack-threat}).
+
+\begin{itemize}
+    \item \textbf{Disclosure}: breach of confidentiality.
+    \item \textbf{Deception}: breach of integrity, leading to the acceptance of false data (e.g.\ convincing the counterpart that a modified contract, more favourable to you, is the genuine one).
+    \item \textbf{Disruption}: breach of availability.
+    \item \textbf{Usurpation}: breach leading to unauthorised use of a system.
+\end{itemize}
+
+\begin{remark}[Disruption by doing nothing]
+Disruption does not require malware. Communication protocols are usually designed assuming that the parties are well behaved and cooperate towards a common goal, so simply \emph{not} doing what the protocol expects, or delaying a response so that messages arrive in the wrong order, can be enough to break them.
+\end{remark}
+
+\begin{table}[H]
+\centering
+\caption{Types of attacks and the classes of threats they realise.}
+\label{tab:attack-threat}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Attack & Disclosure & Deception & Disruption & Usurpation \\
+\midrule
+Snooping, eavesdropping                    & \checkmark &            &            &            \\
+Modification, alteration                   &            & \checkmark &            & \checkmark \\
+Masquerading, spoofing                     &            & \checkmark &            & \checkmark \\
+Repudiation of origin, denial of receipt   &            & \checkmark & \checkmark &            \\
+Delay, destruction, denial of service      &            &            & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The threat landscape.} ENISA, the EU cybersecurity agency, publishes a yearly \emph{Threat Landscape} report. The largest categories are ransomware and DDoS, both attacks on \emph{availability}; data theft is also very popular; supply chain attacks have grown markedly since 2023. Public administration and healthcare are among the most targeted sectors: they hold huge amounts of personal data (useful for fraud and targeted phishing), and they are complex and often underfunded, hence easier to attack.
+
+\subsection{How an attack happens}
+
+Attacks often exploit the \emph{human} as the weakest link. A common goal is to install \textbf{malware} that:
+\begin{itemize}
+    \item gives the attacker access to the system (\emph{RAT}, Remote Access Trojan);
+    \item makes the system unusable (\emph{ransomware}, e.g.\ Cryptolocker);
+    \item sends the victim's data to the attacker (\emph{spyware});
+    \item uses the victim to carry out further attacks (\emph{botnet agent}).
+\end{itemize}
+
+The \textbf{Unified Kill Chain} \cite{pols2017} merges the Cyber Kill Chain and MITRE ATT\&CK and models an attack as three stages, each a cycle of phases that can be repeated:
+\begin{enumerate}
+    \item \textbf{Initial foothold}: reconnaissance, weaponisation, delivery, social engineering, exploitation, persistence, defence evasion, command and control. Result: one compromised system.
+    \item \textbf{Network propagation}: pivoting, discovery, privilege escalation, execution, credential access, lateral movement. Result: control over the internal network.
+    \item \textbf{Action on objectives}: access, collection, exfiltration, target manipulation, impact. Result: the attacker reaches the critical asset and achieves the goal.
+\end{enumerate}
+
+In essence: gather as much information as possible on the target, analyse it to find potential vulnerabilities, choose the tools to exploit them, deliver them. What follows depends on the goal. If the attacker only wants to \emph{disrupt} (ransomware, DoS), the chain ends with the successful attack. Otherwise the attacker may stay hidden as long as possible, waiting for the most valuable information to appear (a patent filing, a state secret) before exfiltrating it, which is the typical behaviour of an \textbf{advanced persistent threat} (APT); or may move laterally, using the new position inside the perimeter to explore network segments, servers, and workstations.
+
+\subsection{Examples of attacks}
+
+\begin{table}[H]
+\centering
+\caption{Main attack types and the property they primarily violate.}
+\label{tab:attack-examples}
+\begin{tabularx}{\textwidth}{@{}l c X@{}}
+\toprule
+Attack & Property & Key idea \\
+\midrule
+DoS / DDoS & A & Overload the victim with traffic or computation. DDoS uses an army of cheap, easily compromised devices (a botnet). \\
+Identity theft & C, I & Stolen personal data used to open accounts, buy, or commit fraud in the victim's name. \\
+Ransomware & A & Encrypt critical data and demand a ransom for the key. \\
+Ransomware as a Service & A & Developers rent ransomware to affiliates who break in, for a share of the ransom (e.g.\ DarkSide). \\
+Crypto-jacking & usurpation & Use victims' devices (e.g.\ via JavaScript in a web page) to mine cryptocurrency. \\
+Phishing & C, I & Fraudulent messages that push the user to install malware or reveal data, leveraging emotions (fear, curiosity, greed). \\
+Supply chain & all & Compromise a supplier that is not interesting in itself to reach its many customers. \\
+Physical theft / destruction & C, A & Bypasses network monitoring and OS protections entirely. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{DDoS.} The least sophisticated attack: it only needs an imbalance of forces, so that the victim exhausts its CPU, memory, or bandwidth. No single computer can overwhelm a player such as Amazon, so attackers build \textbf{botnets} of hundreds of thousands of \enquote{zombies}, preferably old, forgotten, unpatched machines that are worthless one by one but easy to compromise. Blocking is hard because the traffic comes from as many addresses, providers, and countries: you cannot block the whole world without disrupting yourself.
+
+\paragraph{Identity theft.} Typical targets are service providers with large user databases (Yahoo lost more than a billion user records). Even bare e-mail addresses are valuable, since they are \emph{verified} targets for phishing. If password hashes are stolen too, attackers can crack them offline at leisure; because users choose weak passwords and \emph{reuse} them, even one cracked password in a thousand yields a million credential pairs to try on other services. Access to a mailbox then lets the attacker reset passwords elsewhere through \enquote{I forgot my password}.
+
+\paragraph{Ransomware.} It was most effective when victims had no working backups (old, untested, nobody knew where the tapes were). As organisations improved their backups, attackers adapted with \textbf{double extortion}: they first slowly \emph{exfiltrate} sensitive data, then encrypt everything as an unmistakable sign of the attack, and threaten to publish or sell the data if the ransom is not paid, so backups alone no longer help. RaaS operators handle the \enquote{boring} parts (pressuring the victim, negotiation, money laundering).
+
+\begin{remark}
+A common mistake is keeping the backup device on the same network as the systems it protects: it is convenient to automate, but the malware reaches and encrypts the backup too. Backups must be isolated (offline or immutable).
+\end{remark}
+
+\paragraph{Phishing: how to behave.} Phishing is not an attack in itself but a \emph{delivery} method for other attacks (malware, credential theft through fake forms, so that the attacker does not even need to crack the password). Google finds about 300{,}000 new phishing sites a month, many online for less than an hour. Poor grammar and implausible stories used to be telltale signs, but LLMs now write convincing messages in any language, and in \emph{targeted} attacks (spear phishing) they can exploit open-source intelligence on the victim to craft a message tailored to them. The reliable telltale is \emph{psychological}: urgency, deadlines, threats of serious consequences. Whenever something calls for an immediate reaction, stop and think. Take the time to check, giving up convenience when in doubt: type the bank's address in the browser instead of clicking the link, contact the sender through a different channel, and do not open attachments on sensitive (i.e.\ company-connected) machines.
+
+\begin{remark}[Deepfakes and harvesting]
+A few seconds of recorded speech suffice to train a voice deepfake. Videos shared publicly years ago, when nobody knew deepfakes were possible, cannot be taken back. This mirrors \enquote{harvest now, decrypt later} in cryptography: encrypted data collected today will be readable once quantum computers break RSA and elliptic-curve cryptography (\cref{sec:asymmetric}).
+\end{remark}
+
+\paragraph{Supply chain attacks.} They target not the final victim but an intermediate component that the victim includes in its processes or products: in an interconnected world the weakest link is the most efficient path. They are not limited to IT (the Hezbollah pagers operation took an estimated ten years of infiltration of a supply chain), but in IT they are cheap and very wide-reaching.
+\begin{itemize}
+    \item \textbf{Target} (2013): one of the oldest examples. The attackers compromised the HVAC (heating, ventilation, air conditioning) contractor that maintained the stores remotely. Two vulnerabilities: the contractor's remote access let them into the HVAC control computers, and the network was \emph{not segmented}, so the same network carried the point-of-sale systems. Tens of millions of payment cards and customer records were stolen.
+    \item \textbf{SolarWinds}: the Orion platform is a monitoring agent with deep access to customers' systems (US government agencies, large companies, telecom operators). A malicious DLL was injected into the \emph{build process}, giving the attacker control of the agent without credentials; every update pulled the malicious version, granting \emph{persistence}.
+    \item \textbf{Dependency confusion} (2021): malicious packages published on public repositories (npm, PyPI) with the same names as companies' internal dependencies were automatically downloaded by Apple, Microsoft, and others. Ecosystems with a flat namespace (e.g.\ Python) make name clashes and misspellings (typosquatting) easy.
+    \item \textbf{Hallucinated packages} (\enquote{slopsquatting}): LLMs that write code sometimes hallucinate dependencies, and researchers found that the hallucinated names are \emph{predictable}. An attacker registers them, so instead of a failed build the developer silently pulls the malicious module.
+    \item \textbf{xz} (2024): an attacker spent about two years gaining the trust of the community of this ubiquitous compression library by fixing bugs and adding features, while the original maintainer, overworked and under strong pressure, eventually handed over maintainership. The backdoor was hidden not in the source code but in the \emph{build process}. It was discovered by a Microsoft engineer who noticed that SSH logins on his system had become slightly slower and used more CPU.
+\end{itemize}
+
+\begin{remark}
+Accounts of the xz discovery vary in the details (the lecture mentioned a few milliseconds in a CI pipeline); in the documented case, SSH logins took about half a second longer than expected. The lesson is the same: precise monitoring of performance can reveal tampering.
+\end{remark}
+
+\begin{remark}[CrowdStrike, July 2024]
+Not an attack, but a textbook case of failed risk management, of blind trust, and of underestimating availability: a trivial bug in an update of the Falcon security sensor crashed about 8.5 million Windows machines, including systems running airports and hospitals. Causes: poor programming practices, superficial testing, software running with excessive privileges (kernel, \enquote{ring 0}), and no staged rollout. EDR software runs at ring 0 to protect itself and to block anything trying to alter the OS, but then nothing can stop it when it fails. Some systems took a long time to recover because of a \enquote{death spiral}: disks were encrypted (a good idea), but extracting the recovery key required the very system that was not booting. Lesson for administrators: do not let an automated process update critical production systems unattended at 3 a.m.
+\end{remark}
+
+\begin{remark}[Protection rings]
+Ring 0 is the kernel, ring 3 user space. Below ring 0 there are \enquote{negative rings} (hypervisor, system management mode, and, in Intel processors, the Management Engine, which runs a full copy of MINIX inside the chipset), so attacks on hardware and firmware are a real concern.
+\end{remark}
+
+\paragraph{Cyber warfare.} Cyberspace is considered the \enquote{fifth domain} of military operations (after land, sea, air, and space). States use cyber operations to steal information, disrupt services, and influence politics (e.g.\ the 2016 US election).
+
+\begin{example}[Stuxnet]
+Malware attributed to US and Israeli intelligence, built to sabotage uranium enrichment at Natanz, Iran. The centrifuge control systems were air-gapped, so the attack worked on two levels. First, the malware spread as a \emph{worm} through millions of computers worldwide, staying completely silent, until it reached the laptops of the technicians who maintained the plant; when they plugged in a USB drive to update the software, it infected the programmable logic controllers (PLCs). Second, since PLCs come from a handful of vendors and run refineries and power grids everywhere, the payload checked whether it was running in the Natanz configuration and activated only there, to avoid collateral catastrophes.
+\end{example}
+
+\paragraph{Physical theft.} Stealing a laptop or a disk is easy. Once a device leaves your physical protection it is at the attacker's mercy, so sensitive data must be encrypted and protected by strong access control even if the system seems unreachable from outside.
+
+\begin{summary}
+\begin{itemize}
+    \item Security counters \emph{deliberate} harm; safety counters accidental harm. In the dependability taxonomy, security = availability (for authorised users) + confidentiality + integrity.
+    \item Absolute security is impossible (Spafford): a useful system must also be \emph{live}.
+    \item Risk = probability $\times$ impact; both are hard to estimate. Countermeasures prevent, detect, or mitigate, and must reduce risk cost-effectively.
+    \item Security is a continuous process, not a product, and must be designed in from the start.
+    \item CIA: confidentiality, integrity (content \emph{and} origin), availability.
+    \item A threat is a potential condition (or entity/event); an attack makes it materialise; the attacker performs it.
+    \item Threat classes: disclosure, deception, disruption, usurpation.
+    \item Attack chain: foothold, propagation, action on objectives. Ransomware evolved into double extortion; supply chain attacks are growing.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+A company estimates a 10\% yearly probability of a ransomware attack causing €200{,}000 of damage. A backup solution costs €8{,}000 per year and would reduce the impact to €30{,}000. Is it worth adopting?
+\end{exercise}
+\begin{solution}
+Risk without backups: $0.10 \times 200{,}000 = 20{,}000$ €/year. With backups: $0.10 \times 30{,}000 = 3{,}000$ €/year. The risk reduction is €17{,}000/year, more than the €8{,}000 cost, so it is cost-effective.
+\end{solution}
+
+\begin{exercise}
+Distinguish between a threat and an attack, and give an example of each.
+\end{exercise}
+\begin{solution}
+A threat is a \emph{potential} condition that could compromise a security property, and it exists even if it never materialises (e.g.\ the possibility that someone intercepts unencrypted traffic on a public Wi-Fi network). An attack is the \emph{action} that makes the threat materialise (e.g.\ an attacker actually sniffing that traffic to steal credentials).
+\end{solution}
+
+\begin{exercise}
+Classify each of the following into disclosure, deception, disruption, or usurpation: (a) an attacker reads e-mails in transit; (b) a sender denies having placed an online order; (c) a botnet floods a web server; (d) a website silently mines cryptocurrency on visitors' browsers.
+\end{exercise}
+\begin{solution}
+(a) Disclosure (snooping). (b) Deception (repudiation of origin). (c) Disruption (denial of service). (d) Usurpation (unauthorised use of the visitors' resources).
+\end{solution}
+
+\begin{exercise}
+For each event, say whether it is a safety or a security problem, and which dependability attribute is affected: (a) a cloud e-mail service is down for hours because of a cascading internal bug; (b) an attacker alters the set-points of a chemical plant, causing an explosion; (c) a ransomware gang encrypts a hospital's records.
+\end{exercise}
+\begin{solution}
+(a) Safety (accidental fault), affecting availability (and reliability); no attacker is involved. (b) Both: the cause is a security breach (integrity of the control system), the consequence is a safety failure (catastrophic consequences on people and environment). (c) Security: a malicious fault violating availability (and, with double extortion, confidentiality).
+\end{solution}
+
+\begin{exercise}
+A company has daily automated backups on a NAS in the same network as its file servers. Explain why this does not protect it against modern ransomware, and what it should do.
+\end{exercise}
+\begin{solution}
+Ransomware that reaches the file servers can also reach the NAS and encrypt the backups. Moreover, with double extortion the attackers exfiltrate data before encrypting it, so even a working backup does not prevent the threat of publication. The company should keep isolated (offline or immutable) backups and test restoring them, and also protect confidentiality (segmentation, encryption at rest, monitoring of outbound traffic).
+\end{solution}
+
+\begin{exercise}
+Why are insurers comfortable insuring against fires but not against cyber attacks?
+\end{exercise}
+\begin{solution}
+Pricing risk requires reliable estimates of probability and impact. Fires and car crashes are accidental (safety) events with solid statistics. Cyber attacks are malicious, so their probability depends on attackers' motivation and changes quickly, and historical data are incomplete because victims often do not notice or do not report attacks; impact is also hard to bound (reputation, downtime, double extortion).
+\end{solution}

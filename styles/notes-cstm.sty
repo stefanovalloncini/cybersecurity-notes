@@ -1,0 +1,75 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{notes-cstm}[2026/11/14 Custom commands and title page]
+
+% =============================================================
+% Cryptography notation
+% =============================================================
+\DeclareMathOperator{\Enc}{Enc}
+\DeclareMathOperator{\Dec}{Dec}
+\DeclareMathOperator{\KeyGen}{KeyGen}
+\DeclareMathOperator{\Sign}{Sign}
+\DeclareMathOperator{\Vrfy}{Vrfy}
+\DeclareMathOperator{\MAC}{MAC}
+\DeclareMathOperator{\lcm}{lcm}
+
+\newcommand{\Z}{\mathbb{Z}}                 % integers, e.g. \Z_n
+\newcommand{\xor}{\oplus}                   % bitwise XOR
+\newcommand{\concat}{\mathbin{\|}}          % concatenation
+\newcommand{\sample}{\xleftarrow{\$}}       % uniform random sampling
+
+% =============================================================
+% Licence and front matter
+% =============================================================
+\RequirePackage{needspace}                  % keep a heading with its table
+\RequirePackage{pifont}                     % \ding{51} check, \ding{55} cross
+\RequirePackage{ccicons}                    % Creative Commons icons
+\RequirePackage[type=CC,modifier=by-nc-sa,version=4.0,imagewidth=7em]{doclicense}
+
+\newcommand{\yes}{\textcolor{themegreen}{\ding{51}}}
+\newcommand{\no}{\textcolor{red!70!black}{\ding{55}}}
+
+% Unnumbered front-matter chapter: in the TOC, PDF bookmarks and page header.
+\newcommand{\frontchapter}[2]{%
+  \chapter*{#1}\phantomsection\label{#2}%
+  \addcontentsline{toc}{chapter}{#1}%
+  \markboth{#1}{#1}}
+% Link to a front-matter chapter by name, with its page: \fmref{fm:ai}{AI Use Disclosure}
+\newcommand{\fmref}[2]{\hyperref[#1]{\emph{#2}}, p.~\pageref{#1}}
+
+% =============================================================
+% Title page metadata (set in config/config.tex)
+% =============================================================
+\newcommand\@thesistitle{}
+\newcommand\@authorname{}
+\newcommand\@academicyear{}
+\def\@repourl{}
+\newcommand\@titlesize{\Large}
+
+\newcommand{\thesistitle}[1]{\renewcommand\@thesistitle{#1}}
+\newcommand{\authorname}[1]{\renewcommand\@authorname{#1}}
+\newcommand{\academicyear}[1]{\renewcommand\@academicyear{#1}}
+\newcommand{\repourl}[1]{\def\@repourl{#1}}  % \def, so \ifx against \@empty works
+% Prints the repository URL, or #1 if none is set.
+\newcommand{\notesurl}[1][]{\ifx\@repourl\@empty #1\else\expandafter\url\expandafter{\@repourl}\fi}
+\newcommand{\notesauthor}{\@authorname}
+\newcommand{\notestitle}{{\def\\{ }\@thesistitle}}
+\newcommand{\thesistitlesize}[1]{\renewcommand\@titlesize{#1}}
+
+\renewcommand{\maketitle}{%
+  \hypersetup{pageanchor=false}%
+  \begin{titlepage}\centering
+  \vspace*{0.2\textheight}
+  {\color{themeblue!40}\rule{0.35\textwidth}{0.5pt}}\par
+  \vspace{1.5cm}
+  {\color{black!55}\textls[100]{\textsc{course notes}}\par}
+  \vspace{1em}
+  {\@titlesize\bfseries \@thesistitle\par}
+  \vfill
+  {\large \@authorname\par}
+  \vfill
+  {\textcolor{black!70}{\@academicyear}\par}
+  \vspace{0.08\textheight}
+  \end{titlepage}%
+  \hypersetup{pageanchor=true}}
+
+\endinput

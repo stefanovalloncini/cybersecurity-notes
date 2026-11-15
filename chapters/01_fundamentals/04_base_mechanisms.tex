@@ -1,0 +1,442 @@
+% Source: Romandini, 03_Base_Mechanisms
+\section{Randomness, Hash Functions and MACs}
+\label{sec:base-mechanisms}
+
+Before looking at ciphers, we need two building blocks that almost every cryptographic algorithm and protocol relies on: \emph{random numbers} (to generate keys, nonces, initialisation vectors) and \emph{hash functions} (to fingerprint data and, combined with a key, to authenticate messages).
+
+\subsection{Random numbers}
+
+Random numbers are everywhere in cryptography: the keys of RSA and of every symmetric cipher are random numbers, authentication protocols use random \emph{nonces} as challenges, block-cipher modes use random initialisation vectors. If the randomness is weak, everything built on it is weak, however good the algorithm. Random numbers must satisfy two requirements: \textbf{randomness} and \textbf{unpredictability}.
+
+\subsubsection{Randomness}
+
+\begin{definition}[Statistical randomness]
+A sequence of bits is random, in the statistical sense, if it satisfies:
+\begin{itemize}
+    \item \textbf{Uniform distribution}: ones and zeros occur with approximately the same frequency;
+    \item \textbf{Independence}: no subsequence can be inferred from the others.
+\end{itemize}
+\end{definition}
+
+Uniform distribution alone is not enough. The sequence $0101010101\dots$ has exactly as many ones as zeros, but it is perfectly predictable: once you have seen a few bits you know all the rest. Independence must hold at every scale: not only single bits, but also pairs ($00$, $01$, $10$, $11$), triples, and so on must be uniformly distributed.
+
+\begin{example}[Which sequence is random?]
+\label{ex:which-random}
+The lecture showed two 100-bit strings:
+\begin{center}
+\small\ttfamily
+\begin{tabular}{@{}l@{\qquad}l@{}}
+0001011000111110011111 & 1010101001011011001011 \\
+0000001001011111101101 & 1000011010101011110010 \\
+1111111101011111101101 & 0010100101001010010100 \\
+0000010001000100110000 & 0101011011010101011101 \\
+000001100001           & 010101010101
+\end{tabular}
+\end{center}
+Most people pick the right-hand one: the left one has suspicious long runs (\texttt{11111111}, \texttt{000000}) that \enquote{don't look random}. Yet both have 50 ones and 50 zeros, and only the \emph{left} one has the four pairs $00$, $01$, $10$, $11$ in roughly equal numbers (about 18--19 each). The right one has very few $00$ and $11$ ($\approx 10$) and many $01$ and $10$ ($\approx 37$): it alternates too often. Knowing that, an attacker who sees a $0$ can bet that a $1$ follows with better than even odds. The \textbf{left} string is the random one.
+\end{example}
+
+\paragraph{Randomness vs.\ perceived randomness.} Humans expect random sequences to have \emph{few long runs and no clusters}, but true randomness has both. Believing that after many heads a tail is \enquote{due} is the \emph{gambler's fallacy}: in a truly random process each outcome is independent of the past. When Apple's iPod/iTunes shuffle was truly random, users complained that songs by the same artist came up in a row; Apple added a \enquote{Smart Shuffle} that controls grouping (attributed to Steve Jobs: \enquote{we're making it less random to make it feel more random}). Music services do the same: a song just played is down-weighted. That is a forced distribution, and therefore predictable: if a generator \enquote{balances} its output, then after many ones you \emph{know} a zero is more likely.
+
+\begin{remark}
+Security needs \emph{real} randomness; user experience may want \enquote{less random}. Do not confuse the two: a generator tuned to \emph{look} random to humans is precisely one that leaks information.
+\end{remark}
+
+\subsubsection{Unpredictability: TRNG and PRNG}
+
+Statistical randomness is not enough for cryptography: successive values must also be \textbf{unpredictable}, so that an opponent cannot predict future elements from earlier ones.
+
+\begin{definition}[TRNG, PRNG, seed]
+\leavevmode
+\begin{itemize}
+    \item A \textbf{true random number generator} (TRNG) extracts randomness from a physical, non-deterministic \emph{entropy source} (thermal noise, timing of interrupts, mouse movements, keystroke timings, \dots). Each value is statistically independent of the others.
+    \item A \textbf{pseudorandom number generator} (PRNG) is a \emph{deterministic} algorithm that expands a short input, the \textbf{seed}, into a long sequence that looks random. Same seed $\Rightarrow$ same sequence: that is why it is only \enquote{pseudo}-random. A \emph{pseudorandom function} (PRF) is the analogous object producing a fixed-length output from a seed and some context.
+\end{itemize}
+\end{definition}
+
+TRNGs are slow and inefficient: to encrypt a long document you would have to keep moving the mouse until enough random bits were collected. In practice the two are combined (\cref{fig:rng-pipeline}): a small amount of true entropy produces a random seed, and a PRNG stretches it into as many bits as needed. This is why some key-generation tools (e.g.\ GnuPG on Linux) ask you to move the mouse or type while they run: they are collecting entropy for the seed.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.1cm,
+    b/.style={draw, rounded corners, fill=themeblue!8, align=center, font=\footnotesize, minimum height=0.9cm},
+    a/.style={-{Stealth}, thick}]
+    \node[b] (e) {Entropy source\\(physical noise,\\mouse, timings)};
+    \node[b, right=of e] (t) {TRNG};
+    \node[b, right=of t] (p) {PRNG\\(deterministic)};
+    \node[b, right=of p, fill=white] (o) {Long pseudorandom\\bit stream};
+    \draw[a] (e) -- (t);
+    \draw[a] (t) -- node[above, font=\scriptsize] {seed} (p);
+    \draw[a] (p) -- (o);
+\end{tikzpicture}
+\caption{How random bits are produced in practice: true randomness only for the seed.}
+\label{fig:rng-pipeline}
+\end{figure}
+
+\begin{definition}[PRNG security requirement]
+An adversary who does \emph{not} know the seed must be unable to determine the pseudorandom string. Concretely the output must be:
+\begin{itemize}
+    \item \textbf{Forward unpredictable}: if the seed is unknown, the next output bit is unpredictable despite any knowledge of the previous bits;
+    \item \textbf{Backward unpredictable}: it is infeasible to determine the seed from any generated values. Each output bit should look like the outcome of an independent event with probability $1/2$.
+\end{itemize}
+\end{definition}
+
+\paragraph{Seed requirements.} The seed is the only secret, so it must itself be secure and unpredictable: a random or pseudorandom number, typically produced by a TRNG. A PRNG can never have more unpredictability than its seed: if the seed has only $2^{32}$ possible values, so does every key derived from it, no matter how long the key is.
+
+\subsubsection{When randomness fails}
+
+The lecturer stressed that we do not care about random strings for their own sake, but about \emph{what we derive from them}, most of all private keys. If the attacker can predict the generator, he learns the key.
+
+\begin{table}[H]
+\centering
+\caption{Prominent failures of random number generation.}
+\label{tab:rng-failures}
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Case & What went wrong \\
+\midrule
+Netscape (1995) & The SSL session-key generator was seeded with the time of day and process IDs: easily guessable, so session keys could be recovered in minutes. \\
+Windows 2000/XP & The OS generator could be reconstructed from its internal state; knowing the state revealed past and future outputs (violating both forward and backward unpredictability). \\
+Debian OpenSSL (2006--2008) & A patch removed the code that added entropy; the only variable left was the process ID, so only about $2^{15}$ (32{,}767) keys per type and size could ever be generated. \\
+RSA public key factoring (2012) & Large scans of RSA keys on the Internet found many pairs sharing a prime factor, generated by devices with little entropy; a simple $\gcd$ factors both moduli (see \cref{sec:asymmetric}). \\
+Java nonce collision (2013) & A bug in Android's \texttt{SecureRandom} produced repeated ECDSA nonces; a repeated nonce reveals the private key, and Bitcoin wallets were emptied. \\
+Dual\_EC\_DRBG & A NIST-standardised generator with a suspected (NSA) backdoor: whoever knows a hidden relation between its constants can predict the output. Withdrawn in 2014. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{example}[A private key equal to 4 (eMudhra, October 2026)]
+eMudhra, a certification authority that issues certificates for websites, was found to have 8 private keys that were tiny numbers: 4, 56, 66, 115, 155, 156, 230, 237. A key for the P-384 elliptic curve should be a random number of about 384 bits, i.e.\ one of $\approx 2^{384}$ values. Here all keys were below $2^8 = 256$, so anyone could recover them by trying the 256 smallest values. (A joke at the time: they read \enquote{384} as the maximum \emph{value} of the key rather than its \emph{length} in bits.) The signature algorithm was fine; the key generation was not. The company is now distrusted. The full case is discussed in the lecture on certificates.
+\end{example}
+
+\begin{remark}[A small key is not the problem per se]
+Any value, including 4, has the same probability $2^{-384}$ of being drawn. Key-generation guidelines do \emph{not} say \enquote{reject keys below a million}: excluding values would itself skew the distribution and give the attacker information. The red flag is the \emph{probability}: eight independent random 384-bit keys all falling below 256 has probability $(2^8/2^{384})^8 = 2^{-3008}$, i.e.\ it never happens by chance.
+\end{remark}
+
+\paragraph{Random numbers in practice.}
+\begin{itemize}
+    \item Use the random generator of the operating system (\texttt{/dev/urandom}, \texttt{getrandom()}; in Python the \texttt{secrets} module or \texttt{os.urandom}). \textbf{Never write your own.}
+    \item Ordinary generators (e.g.\ Python's \texttt{random} module, a Mersenne Twister) are fine for games and simulations but predictable: after observing enough outputs the internal state can be reconstructed. Never use them for keys.
+    \item Embedded devices and cloned virtual machines may have very little entropy at boot, or share the same state: weak or identical keys follow.
+\end{itemize}
+
+\subsection{Hash functions}
+
+\begin{definition}[Hash function]
+A \textbf{hash function} $H$ maps an input $m$ of arbitrary length (10 bits or 100 gigabytes) to an output $H(m)$ of \emph{fixed} length $n$ (e.g.\ 256 bits for SHA-256). The output is called the \emph{hash value}, \emph{digest}, or \emph{fingerprint} (used as synonyms).
+\end{definition}
+
+Cryptographic hash functions are used to verify file integrity (fingerprinting), to protect stored credentials (passwords are stored as salted hashes, not in clear), in digital signatures (one signs the short hash, not the whole document), and in proof-of-work (blockchains). The lecturer's SHA-256 demo showed two features worth remembering:
+\begin{itemize}
+    \item \textbf{Determinism}: the same input always gives the same hash, on any machine. If you and I compute SHA-256 of \texttt{hello} we get the same digest, which is what makes verification possible.
+    \item \textbf{Avalanche effect}: changing a single character (\texttt{hello} $\to$ \texttt{Hello}) or a single bit produces a completely different digest, not a \enquote{slightly different} one. The output leaks nothing about the input and nearby inputs do not give nearby outputs.
+\end{itemize}
+
+\subsubsection{Security properties}
+
+\begin{definition}[Properties of a cryptographic hash function]
+\label{def:hash-properties}
+\leavevmode
+\begin{itemize}
+    \item \textbf{Efficiency}: computing $H(m)$ is fast for any $m$.
+    \item \textbf{Preimage resistance} (one-wayness): given $h$, it is infeasible to find \emph{any} $m$ with $H(m) = h$.
+    \item \textbf{Second-preimage resistance}: given $m_1$, it is infeasible to find $m_2 \neq m_1$ with $H(m_2) = H(m_1)$.
+    \item \textbf{Collision resistance}: it is infeasible to find \emph{any} two inputs $x \neq y$ with $H(x) = H(y)$.
+\end{itemize}
+\end{definition}
+
+The difference between the last two is who chooses the messages. In a second-preimage attack the target $m_1$ is \emph{fixed} (e.g.\ the file you published) and the attacker must match it; in a collision attack the attacker is \emph{free to choose both} inputs, which is easier. Hence collision resistance implies second-preimage resistance.
+
+\begin{remark}[One-way, but no trapdoor]
+A hash is a \emph{one-way} function: easy to compute, infeasible to invert. Unlike the trapdoor functions of asymmetric cryptography (\cref{sec:asymmetric}), there is no secret parameter that makes the inversion easy: nobody, not even the designer, can go back from $h$ to $m$.
+\end{remark}
+
+\paragraph{Collisions always exist.} The input space is (practically) infinite and the output space has $2^n$ elements, so by the pigeonhole principle infinitely many inputs share each hash value. \enquote{Collision resistant} therefore means \emph{computationally} infeasible to \emph{find} one, not that none exists: we are in the realm of computational, not perfect, security. With a good hash the attacker's best strategy is generic brute force:
+\begin{itemize}
+    \item preimage or second preimage: about $2^n$ evaluations;
+    \item collision: only about $2^{n/2}$ evaluations, by the \textbf{birthday paradox} (among $k$ random values, a repeated one is likely once $k \approx \sqrt{2^n}$).
+\end{itemize}
+For SHA-256 this means $2^{256}$ and $2^{128}$ operations, both infeasible.
+
+\begin{remark}[Collision cost in the lecture]
+In class the cost of finding a collision for a 256-bit hash was given as $2^{256}$, i.e.\ \enquote{computing all possible hashes}. That is the cost of a preimage. Because of the birthday paradox a collision costs only $\approx 2^{n/2} = 2^{128}$: still infeasible, but this square-root effect is why hash outputs must be twice as long as the security level you want.
+\end{remark}
+
+From a benign user's point of view, collision resistance is what lets a hash act as a unique name. For example, every Git commit is identified by its hash; two different commits with the same identifier would be a collision.
+
+\begin{remark}[Non-cryptographic hashes]
+Not every \enquote{hash} is cryptographic. Python's built-in \texttt{hash()}, used for dictionaries, is fast but not designed to resist attacks. Its values for strings are also randomised by a per-process seed (\texttt{PYTHONHASHSEED}), so the same string gets different values in different runs, though the same value within one run. For security, use \texttt{hashlib} (SHA-256, SHA-3).
+\end{remark}
+
+\subsubsection{State of the art}
+
+\begin{table}[H]
+\centering
+\caption{Hash functions today.}
+\label{tab:hash-state}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Family & Output (bits) & Status \\
+\midrule
+MD5 & 128 & Broken (practical collisions since 2004). Never use for security. \\
+SHA-1 & 160 & Broken (practical collision in 2017). NIST deprecated it in 2011 and plans to retire it completely by 2030. \\
+SHA-2 (SHA-256, SHA-512) & 224--512 & Current standard. Merkle--Damgård design. \\
+SHA-3 & 224--512 & Modern alternative with a different (sponge) design. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Hash algorithms must be replaced over time as attacks improve: plan for it (\emph{crypto-agility}).
+
+\subsection{Fingerprinting and message integrity}
+
+\begin{definition}[Fingerprinting]
+A procedure that maps an arbitrarily large data item to a much shorter bit string, its \emph{fingerprint}, which identifies the original data the way a human fingerprint identifies a person. It guarantees \emph{immutability}: the file is the same as at the origin.
+\end{definition}
+
+\begin{remark}
+\enquote{Uniquely identifies} is meant in the practical sense: collisions exist (pigeonhole) but cannot be found, so for all purposes the fingerprint is unique.
+\end{remark}
+
+\begin{example}[Checksum of a download]
+Linux distributions publish the SHA-256 of their ISO images. After downloading, you hash the file and compare. Anyone on the path could have added or removed bits, but by the avalanche effect any change gives a different digest, and by second-preimage resistance nobody can craft a different file with the published digest.
+\end{example}
+
+The same idea gives message integrity: Alice sends $m$ and $H(m)$; Bob recomputes $H(m)$ and compares. This works \emph{only if the hash reaches Bob through a channel the attacker cannot modify} (out of band, e.g.\ handed over in person, or a website served over HTTPS while the file comes from a mirror). If $m \concat H(m)$ travel together on the same insecure channel, an active attacker simply replaces both with $m' \concat H(m')$: the hash is public, anyone can compute it. A plain hash protects against accidental and in-transit modification \emph{only when its own integrity is protected}, and it says nothing about \emph{who} sent the message.
+
+\subsection{Message authentication codes}
+
+Message authentication ensures that the received data are exactly as sent (\textbf{integrity}) and that they come from the claimed sender (\textbf{authenticity}). With hash functions alone this is achieved by mixing a shared secret key into the hash.
+
+\begin{definition}[MAC]
+A \textbf{message authentication code} is a short, fixed-length tag $t = \MAC_k(m)$ computed from the message $m$ and a secret key $k$ shared by sender and receiver. Since only the holders of $k$ can compute a valid tag, it authenticates the sender and protects integrity.
+\end{definition}
+
+Protocol: Alice sends $(m, t)$ with $t = \MAC_k(m)$. Bob recomputes $\MAC_k(m)$ on the received message and compares it with $t$. If they coincide, the message is unmodified and was produced by someone who knows $k$, i.e.\ Alice (or Bob himself). An attacker who changes $m$ cannot produce the matching tag without $k$.
+
+\begin{remark}
+\leavevmode
+\begin{itemize}
+    \item A MAC gives \textbf{no confidentiality}: $m$ travels in clear. Encryption can be added as a separate layer.
+    \item A MAC is not a digital signature: both parties know $k$, so Bob cannot prove to a third party that Alice, not he, produced the tag (no non-repudiation).
+    \item The slide says a MAC prevents \enquote{modifications or replay}. A MAC alone does \emph{not} stop replay: an old $(m, t)$ resent later still verifies. Against replay you must authenticate also a nonce, sequence number, or timestamp.
+\end{itemize}
+\end{remark}
+
+The obvious construction is $\MAC_k(m) = H(k \concat m)$. It is \textbf{insecure} with the most common hash functions because of the length-extension attack, which depends on how those hashes are built.
+
+\subsection{The Merkle--Damgård construction}
+
+MD5, SHA-1 and SHA-2 all follow the \textbf{Merkle--Damgård} scheme (\cref{fig:merkle-damgard}). The message is padded and split into blocks $m_0, \dots, m_N$ of $r$ bits. A \emph{compression function} $f$ takes the current $n$-bit chaining value and one $r$-bit block ($r > n$) and outputs a new $n$-bit chaining value:
+\[
+    h_0 = IV, \qquad h_{i} = f(h_{i-1}, m_{i-1}), \qquad H(m) = h_{N+1}.
+\]
+The initialisation vector $IV$ is a fixed public constant, the same for everybody: that is why everybody gets the same hash for the same input. The padding (\emph{Merkle--Damgård strengthening}) appends a $1$ bit, zeros, and the length of the message, so that the last block encodes $|m|$.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    f/.style={draw, regular polygon, regular polygon sides=8, minimum size=0.95cm, fill=themegreen!20, inner sep=0pt, font=\small},
+    blk/.style={draw, minimum width=0.9cm, minimum height=0.55cm, font=\small},
+    a/.style={-{Stealth}, thick}]
+    \node[blk, fill=themegray!15] (iv) at (0,0) {$IV = h_0$};
+    \node[f] (f0) at (2.2,0) {$f$};
+    \node[f] (f1) at (4.4,0) {$f$};
+    \node (dots) at (6.4,0) {$\cdots$};
+    \node[f] (fn) at (8.4,0) {$f$};
+    \node[blk, fill=themeorange!20] (out) at (11,0) {$h_{N+1} = H(m)$};
+    \node[blk] (m0) at (2.2,1.4) {$m_0$};
+    \node[blk] (m1) at (4.4,1.4) {$m_1$};
+    \node[blk] (mn) at (8.4,1.4) {$m_N$};
+    \draw[a] (m0) -- node[right, font=\scriptsize] {$r$ bits} (f0);
+    \draw[a] (m1) -- (f1);
+    \draw[a] (mn) -- (fn);
+    \draw[a] (iv) -- node[below, font=\scriptsize] {$n$ bits} (f0);
+    \draw[a] (f0) -- node[below, font=\scriptsize] {$h_1$} (f1);
+    \draw[a] (f1) -- node[below, font=\scriptsize] {$h_2$} (dots);
+    \draw[a] (dots) -- (fn);
+    \draw[a] (fn) -- (out);
+\end{tikzpicture}
+\caption{Merkle--Damgård construction: the digest is the last chaining value.}
+\label{fig:merkle-damgard}
+\end{figure}
+
+The crucial observation: \textbf{the output $H(m)$ is the full internal state} after the last block. Whoever knows $H(m)$ can keep the chain going, feeding more blocks into $f$ (which is public), without knowing $m$.
+
+\subsection{The length-extension attack}
+
+\begin{definition}[Length-extension attack]
+For a Merkle--Damgård hash, knowing $H(m_1)$ and the \emph{length} of $m_1$ (but not its content) is enough to compute $H(m_1 \concat \mathit{pad} \concat m_2)$ for any $m_2$ of the attacker's choice, where $\mathit{pad}$ is the padding that $H$ would have appended to $m_1$.
+\end{definition}
+
+Apply this to the naive MAC $t = H(k \concat m)$. On the network flow $m$ and $t$. The attacker does not know $k$, so he cannot recompute the tag for a \emph{different} message. But he can \emph{extend} the message (\cref{fig:length-extension}):
+\begin{enumerate}
+    \item take $t = H(k \concat m)$ as the chaining value (it is the internal state after processing $k \concat m \concat \mathit{pad}$);
+    \item compute $\mathit{pad}$: it depends only on the total length $|k| + |m|$, which is known or easy to guess;
+    \item continue the chain with his own blocks $m'$, obtaining $t' = H(k \concat m \concat \mathit{pad} \concat m')$;
+    \item send $(m \concat \mathit{pad} \concat m',\ t')$.
+\end{enumerate}
+Bob sees a single message $M = m \concat \mathit{pad} \concat m'$, computes $H(k \concat M)$ exactly as usual, and gets $t'$: the forged message verifies.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    f/.style={draw, regular polygon, regular polygon sides=8, minimum size=0.95cm, fill=themegreen!20, inner sep=0pt, font=\small},
+    fa/.style={draw, regular polygon, regular polygon sides=8, minimum size=0.95cm, fill=red!20, inner sep=0pt, font=\small},
+    blk/.style={draw, minimum width=0.9cm, minimum height=0.55cm, font=\small},
+    a/.style={-{Stealth}, thick}]
+    \node[blk, fill=themegray!15] (iv) at (0,0) {$IV$};
+    \node[f] (f0) at (1.6,0) {$f$};
+    \node (dots) at (3.2,0) {$\cdots$};
+    \node[f] (fn) at (4.8,0) {$f$};
+    \node[fa] (fa1) at (7.6,0) {$f$};
+    \node[fa] (fa2) at (9.4,0) {$f$};
+    \node[blk, fill=themeorange!20] (out) at (11.9,0) {$t'$};
+    \node[blk] (b0) at (1.6,1.4) {$k \cdots$};
+    \node[blk] (bn) at (4.8,1.4) {$\cdots m \concat \mathit{pad}$};
+    \node[blk, fill=red!8] (a1) at (7.6,1.4) {$m'_0$};
+    \node[blk, fill=red!8] (a2) at (9.4,1.4) {$m'_1 \concat \mathit{pad}'$};
+    \draw[a] (b0) -- (f0);
+    \draw[a] (bn) -- (fn);
+    \draw[a] (a1) -- (fa1);
+    \draw[a] (a2) -- (fa2);
+    \draw[a] (iv) -- (f0);
+    \draw[a] (f0) -- (dots);
+    \draw[a] (dots) -- (fn);
+    \draw[a] (fn) -- node[above, font=\scriptsize] {$t = H(k\concat m)$} node[below, font=\scriptsize] {(public)} (fa1);
+    \draw[a] (fa1) -- (fa2);
+    \draw[a] (fa2) -- (out);
+    \draw[decorate, decoration={brace, mirror, amplitude=5pt}] (-0.4,-0.8) -- node[below=6pt, font=\scriptsize] {computed by Alice (needs $k$)} (5.3,-0.8);
+    \draw[decorate, decoration={brace, mirror, amplitude=5pt}, red!70!black] (6.9,-0.8) -- node[below=6pt, font=\scriptsize] {computed by the attacker (no $k$ needed)} (12.3,-0.8);
+\end{tikzpicture}
+\caption{Length extension: the attacker resumes the chain from the published tag $t$.}
+\label{fig:length-extension}
+\end{figure}
+
+\begin{example}[Forging a bank transfer]
+A web application authorises transfers with a URL like
+\begin{center}
+\small\texttt{account\_from=10203040\&account\_to=90807060\&amount=100\&hash=AABBCC112233}
+\end{center}
+where \texttt{hash} $= \mathrm{MD5}(\texttt{SECRET} \concat \texttt{10203040} \concat \texttt{90807060} \concat \texttt{100})$. The attacker wants to transfer 1000 instead. Changing \texttt{amount=100} to \texttt{1000} would require a new hash, impossible without \texttt{SECRET}. But knowing the old hash and the length of \texttt{SECRET} he can forge a valid hash for
+\begin{center}
+\small $m \concat \mathit{pad} \concat \texttt{\&amount=1000}$
+\end{center}
+and if the server takes the \emph{last} value of a repeated parameter, it executes a transfer of 1000 with a valid hash.
+\end{example}
+
+\paragraph{Countermeasures.}
+\begin{itemize}
+    \item \textbf{Use HMAC} (below): the standard, provably secure construction.
+    \item Use a hash that is not vulnerable to length extension: SHA-3 (its output is not the full internal state) or truncated SHA-2 variants such as SHA-512/256.
+    \item Put the key at the end, $H(m \concat k)$: proposed in class. The attacker can still append blocks to $m$, but Bob computes $H(m \concat m' \concat k)$, a different bit sequence from the one the attacker could extend, so the forgery fails. (Order matters: concatenation is not commutative, and $H(a \concat b) \neq H(b \concat a)$.)
+\end{itemize}
+
+\begin{remark}[Key at the end is not the real fix]
+$H(m \concat k)$ does stop length extension, but it is still not a good MAC: if the attacker can find a collision $H(m_1) = H(m_2)$ \emph{offline}, without the key (cheap for MD5 or SHA-1), then by the Merkle--Damgård structure $H(m_1 \concat k) = H(m_2 \concat k)$, so a tag for $m_1$ is also a valid tag for $m_2$. The security of the MAC would drop to the collision resistance of the hash. Use HMAC.
+\end{remark}
+
+\begin{definition}[HMAC \cite{rfc2104}]
+Given a hash $H$ with block size $B$ bytes and a key $k$ (hashed first if longer than $B$, then padded with zeros to $B$ bytes, giving $k'$):
+\[
+    \mathrm{HMAC}_k(m) = H\big( (k' \xor \mathit{opad}) \concat H\big( (k' \xor \mathit{ipad}) \concat m \big) \big),
+\]
+where $\mathit{ipad} = \texttt{0x36}$ and $\mathit{opad} = \texttt{0x5c}$, each repeated $B$ times.
+\end{definition}
+
+The inner hash processes the message; the outer hash, keyed with a different derived key, \enquote{seals} the result. The attacker never sees the inner state, so length extension cannot work. HMAC can be built from any hash (HMAC-SHA256 is the most common), its security is proven under mild assumptions on the compression function, and even HMAC-MD5 and HMAC-SHA1 are not broken by the known collisions (though they should not be used in new systems). HMAC is used in TLS, IPsec, JSON Web Tokens, and in authenticated encryption schemes (\cref{sec:symmetric}).
+
+\subsection{Merkle trees, hash chains and quantum computers}
+
+\begin{definition}[Merkle tree]
+A binary tree in which each \emph{leaf} is the hash of a data block and each internal node is the hash of the concatenation of its children. The \emph{root} hash commits to all the data: changing any block changes its leaf, and therefore every node up to the root.
+\end{definition}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    n/.style={draw, rounded corners, fill=themeblue!8, font=\footnotesize, minimum height=0.6cm, inner sep=3pt},
+    d/.style={draw, fill=themegray!15, font=\footnotesize, minimum width=1.1cm, minimum height=0.55cm},
+    level distance=1.3cm, a/.style={-{Stealth}}]
+    \node[n, fill=themeorange!20] (r) at (0,0) {$h_{1234} = H(h_{12} \concat h_{34})$};
+    \node[n] (h12) at (-3,-1.3) {$h_{12} = H(h_1 \concat h_2)$};
+    \node[n] (h34) at (3,-1.3) {$h_{34} = H(h_3 \concat h_4)$};
+    \node[n] (h1) at (-4.5,-2.6) {$h_1 = H(D_1)$};
+    \node[n] (h2) at (-1.5,-2.6) {$h_2 = H(D_2)$};
+    \node[n] (h3) at (1.5,-2.6) {$h_3 = H(D_3)$};
+    \node[n] (h4) at (4.5,-2.6) {$h_4 = H(D_4)$};
+    \node[d] (d1) at (-4.5,-3.8) {$D_1$};
+    \node[d] (d2) at (-1.5,-3.8) {$D_2$};
+    \node[d] (d3) at (1.5,-3.8) {$D_3$};
+    \node[d] (d4) at (4.5,-3.8) {$D_4$};
+    \foreach \c/\p in {h12/r, h34/r, h1/h12, h2/h12, h3/h34, h4/h34, d1/h1, d2/h2, d3/h3, d4/h4}
+        \draw[a] (\c) -- (\p);
+\end{tikzpicture}
+\caption{A Merkle tree over four data blocks. The root commits to all of them.}
+\label{fig:merkle-tree}
+\end{figure}
+
+The advantage over hashing everything together is efficient \emph{proofs of inclusion}: to prove that $D_3$ belongs to the set with root $h_{1234}$ you only need $h_4$ and $h_{12}$ (one hash per level, $\log_2$ of the number of blocks), not the other data. Merkle trees are used in Git, in file-sharing and backup systems, in Certificate Transparency logs, and in blockchains. A \textbf{hash chain} links records by including in each one the hash of the previous one, so altering a past record breaks every link after it. Hash chains and Merkle trees are the building blocks of blockchains (covered in the Blockchain lecture).
+
+\paragraph{Hashes and quantum computers.} Quantum computers weaken hash functions only slightly. Grover's algorithm finds a preimage in about $2^{n/2}$ quantum steps instead of $2^n$, so a 256-bit hash still gives 128-bit security against preimages; quantum collision search offers no practical gain over the classical $2^{n/2}$. Hence the rule: \textbf{use outputs of at least 256 bits}. Unlike RSA and elliptic curves (\cref{sec:asymmetric}), hash functions do not need to be replaced.
+
+\begin{remark}
+In class hash functions were called \enquote{quantum secure, you cannot break them}. More precisely, as the slide says, quantum computers \emph{weaken} them (square-root speed-up for preimages), which is compensated by doubling the output length; they do not break them the way Shor's algorithm breaks RSA.
+\end{remark}
+
+\begin{summary}
+\begin{itemize}
+    \item Random numbers need \emph{uniform distribution} and \emph{independence} at all scales (single bits, pairs, \dots), and for cryptography also \emph{unpredictability}.
+    \item In practice: TRNG (entropy) $\to$ seed $\to$ PRNG. A PRNG is deterministic; its output must be forward and backward unpredictable, and it is never stronger than its seed.
+    \item Use the OS generator, never \texttt{random}-like generators for keys. Weak randomness has broken Netscape, Debian OpenSSL, Android Bitcoin wallets, and the eMudhra keys.
+    \item A hash maps arbitrary input to a fixed-length digest; it is deterministic, shows the avalanche effect, and must be preimage, second-preimage and collision resistant. Collisions exist but must be infeasible to find (birthday bound $2^{n/2}$).
+    \item MD5 and SHA-1 are broken; SHA-2 is the standard; SHA-3 the alternative.
+    \item A plain hash gives integrity only if the hash itself is protected; a MAC (shared key) gives integrity and authenticity, not confidentiality.
+    \item $H(k \concat m)$ is vulnerable to length extension on Merkle--Damgård hashes because the digest is the full internal state. Use HMAC.
+    \item Merkle trees commit to many blocks with one root and allow logarithmic inclusion proofs. Quantum computers only halve the security of hashes: use $\geq 256$-bit outputs.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+Both strings below contain eight ones and eight zeros. Which one would fail a randomness test, and why? (a) \texttt{0110100110010110}; (b) \texttt{0101010101010101}.
+\end{exercise}
+\begin{solution}
+(b). Its single-bit frequencies are uniform, but its overlapping pairs are only $01$ and $10$ (never $00$ or $11$), so the independence requirement fails: after a $0$ always comes a $1$, and the whole sequence is predictable from its first bit. String (a) has all four pairs ($00$, $01$, $10$, $11$) appearing. Uniform distribution of single bits is necessary but not sufficient.
+\end{solution}
+
+\begin{exercise}
+A program generates 256-bit AES keys with a PRNG seeded with the current Unix time in seconds. An attacker knows the key was generated during a given day. How much work does a brute-force attack require? What should the program do instead?
+\end{exercise}
+\begin{solution}
+A day has $86{,}400 < 2^{17}$ seconds, so there are fewer than $2^{17}$ possible seeds and hence fewer than $2^{17}$ possible keys: trivial to enumerate, despite the nominal $2^{256}$ key space. A PRNG is never stronger than its seed (this is the Netscape/Debian class of failure). The program should take keys from the operating system's cryptographically secure generator (\texttt{/dev/urandom}, \texttt{getrandom()}, Python's \texttt{secrets}), which is seeded from real entropy.
+\end{solution}
+
+\begin{exercise}
+For each use, say which hash property is the essential one: (a) the SHA-256 checksum published for an ISO image; (b) storing password hashes; (c) signing $H(\text{contract})$ instead of the contract, when the attacker may prepare the contract to be signed.
+\end{exercise}
+\begin{solution}
+(a) Second-preimage resistance: the file is fixed and the attacker must produce a different file with the same digest. (b) Preimage resistance (one-wayness): from a leaked hash it must be infeasible to recover a password (in practice also with salts and slow hash functions, since passwords have low entropy). (c) Collision resistance: the attacker can craft two contracts $x, y$ with $H(x) = H(y)$, get the victim to sign the harmless $x$, and then claim the signature is on $y$.
+\end{solution}
+
+\begin{exercise}
+A hash has a 128-bit output. Roughly how many evaluations does a generic attack need to find (a) a preimage, (b) a collision? Why are 256-bit outputs recommended today?
+\end{exercise}
+\begin{solution}
+(a) About $2^{128}$. (b) About $2^{64}$, by the birthday paradox: this is within reach of well-funded attackers. A 256-bit output pushes collisions to $2^{128}$, and also keeps preimages at $2^{128}$ against a quantum attacker using Grover's algorithm.
+\end{solution}
+
+\begin{exercise}
+A server authenticates API requests with $t = \mathrm{SHA256}(k \concat m)$, where $k$ is a 16-byte secret. Describe how an attacker who observes one valid pair $(m, t)$ can forge a valid pair for a longer message, and give two correct fixes.
+\end{exercise}
+\begin{solution}
+SHA-256 is a Merkle--Damgård hash, so $t$ is the internal state after processing $k \concat m \concat \mathit{pad}$, where $\mathit{pad}$ depends only on $|k| + |m| = 16 + |m|$, which the attacker knows. Starting the compression function from $t$, he processes extra blocks $m'$ and obtains $t' = \mathrm{SHA256}(k \concat m \concat \mathit{pad} \concat m')$. He sends $(m \concat \mathit{pad} \concat m', t')$; the server computes the hash of $k$ concatenated with the received message and gets exactly $t'$. Fixes: use $\mathrm{HMAC\text{-}SHA256}_k(m)$; or use a hash that is not length-extendable, such as SHA-3 or SHA-512/256. (Moving the key to the end blocks length extension but makes forgery depend on offline collisions, so it is not recommended.)
+\end{solution}
+
+\begin{exercise}
+Alice sends Bob $m \concat H(m)$ over an insecure channel. Which of confidentiality, integrity and authenticity does this provide against an active attacker? What changes if she sends $m \concat \mathrm{HMAC}_k(m)$, with $k$ shared with Bob?
+\end{exercise}
+\begin{solution}
+Against an active attacker, none: $m$ is in clear (no confidentiality), and the attacker can replace the pair with $m' \concat H(m')$ because $H$ is public (no integrity, no authenticity). It only detects accidental corruption. With HMAC, the attacker cannot compute a valid tag for a modified message without $k$, so Bob gets integrity and authenticity (the message comes from a holder of $k$). Still no confidentiality, no non-repudiation (Bob also knows $k$), and no replay protection unless a nonce or counter is included in $m$.
+\end{solution}

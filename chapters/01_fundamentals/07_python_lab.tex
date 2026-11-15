@@ -1,0 +1,272 @@
+% Source: Romandini, afternoon lecture of 14 Nov 2026 (hands-on part, demo code shown in class)
+\section{Hands-on: Cryptography in Python}
+\label{sec:crypto-lab}
+
+At the end of the module the lecturer showed how the primitives seen in theory are used in practice, from the command line and from Python. The code below is a cleaned-up version of what was shown, tested with Python~3.9+ and the \texttt{cryptography} package (\texttt{pip install cryptography}). Two rules apply to all of it:
+\begin{itemize}
+    \item use \textbf{well-reviewed libraries} and their high-level interfaces; never implement the primitives yourself;
+    \item every function works on \textbf{bytes}, not strings: write \mintinline{python}{b"..."} or call \mintinline{python}{"...".encode()}.
+\end{itemize}
+
+The \texttt{cryptography} package has two layers: a high-level \emph{recipes} layer (Fernet), safe by default, and a low-level layer, \texttt{cryptography.hazmat} (\enquote{hazardous materials}), which exposes raw algorithms and modes and lets you make every mistake described in \cref{sec:symmetric}.
+
+\subsection{Hashing files and strings}
+
+On Linux, \texttt{sha256sum} prints the SHA-256 digest of a file (on macOS: \texttt{shasum -a 256}); \texttt{md5sum} and \texttt{sha1sum} also exist, but MD5 and SHA-1 are broken (\cref{tab:hash-state}).
+
+\begin{minted}{bash}
+printf 'abc123' > test.txt        # no trailing newline
+sha256sum test.txt
+# 6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118090  test.txt
+echo 'abc123' > test2.txt         # echo (and most editors) add "\n"
+sha256sum test2.txt
+# 5ecf8d2cc410094e8b82dd0bc178a57f3aa1e80916689beb00fe56148b1b1256  test2.txt
+\end{minted}
+
+\begin{remark}[The invisible newline]
+In class the digest of a text file and the digest of the \enquote{same} string computed in Python did not match. The reason: text editors terminate the file with a newline character, so the file contained \texttt{abc123\textbackslash n}, not \texttt{abc123}. One extra byte, completely different digest: the avalanche effect (\cref{sec:base-mechanisms}) in action. When two hashes \enquote{of the same thing} differ, first check the exact bytes (encoding, trailing newline, \texttt{\textbackslash r\textbackslash n} on Windows).
+\end{remark}
+
+In Python, the standard library module \texttt{hashlib} is enough; the lecture used the equivalent interface of the \texttt{cryptography} package. Both are incremental: \mintinline{python}{update()} appends data, so hashing \texttt{abc} then \texttt{123} equals hashing \texttt{abc123}, which is how large files are hashed without loading them into memory.
+
+\begin{minted}{python}
+import hashlib
+from cryptography.hazmat.primitives import hashes
+
+print(hashlib.sha256(b"abc123").hexdigest())   # same digest as sha256sum test.txt
+
+h = hashlib.sha256()
+h.update(b"abc")
+h.update(b"123")              # update() appends: same as hashing b"abc123"
+print(h.hexdigest())
+
+digest = hashes.Hash(hashes.SHA256())          # the version shown in class
+digest.update(b"abc123")
+print(digest.finalize().hex())                 # finalize() can be called only once
+
+h = hashlib.sha256()                           # hash a file in 64 KiB chunks
+with open("test.txt", "rb") as f:
+    for chunk in iter(lambda: f.read(65536), b""):
+        h.update(chunk)
+print(h.hexdigest())
+\end{minted}
+
+\begin{remark}[Python's built-in \texttt{hash()}]
+Python's built-in \mintinline{python}{hash()} is \emph{not} a cryptographic hash: it is designed for dictionaries, and for strings it is salted with a random per-process seed, so the same string gives different values in different runs. Whenever two systems must agree on a digest, or security is involved, use SHA-256 or SHA-3 from \texttt{hashlib}: cryptographic hashes are deterministic everywhere (\cref{sec:base-mechanisms}).
+\end{remark}
+
+\subsection{HMAC}
+
+HMAC (\cref{sec:base-mechanisms}) needs a key: it must be \textbf{random}, generated with the \texttt{secrets} module (or \texttt{os.urandom}), not a word typed by a human.
+
+\begin{minted}{python}
+import hmac, hashlib, secrets
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.hmac import HMAC
+from cryptography.exceptions import InvalidSignature
+
+key = secrets.token_bytes(32)          # 256 random bits, shared by sender and receiver
+msg = b"transfer 100 EUR to account 90807060"
+
+tag = hmac.new(key, msg, hashlib.sha256).digest()          # sender
+
+expected = hmac.new(key, msg, hashlib.sha256).digest()     # receiver
+print(hmac.compare_digest(tag, expected))                  # True
+
+h = HMAC(key, hashes.SHA256())         # the cryptography package, as in class
+h.update(msg)
+h.verify(tag)                          # returns silently if valid...
+h = HMAC(key, hashes.SHA256())
+h.update(msg)
+try:
+    h.verify(b"\x00" * 32)             # ...raises if the tag is wrong
+except InvalidSignature:
+    print("InvalidSignature")
+\end{minted}
+
+The receiver never \enquote{decrypts} the tag: it recomputes it from the received message and its own copy of the key, and compares. A tag made up by someone without the key (the all-zero string above) is rejected. In class the tag was loosely called a \enquote{signature}; strictly it is a MAC, since both parties hold the same key and it gives no non-repudiation.
+
+\begin{definition}[Constant-time comparison]
+Comparing two tags with \mintinline{python}{==} stops at the first differing byte, so the time taken leaks how many leading bytes are correct. An attacker who can submit many forged tags and measure response times can guess the correct tag byte by byte (a \emph{timing attack}). \mintinline{python}{hmac.compare_digest(a, b)} takes the same time whatever the content, and the \texttt{verify()} methods of \texttt{cryptography} compare in constant time internally. Always use one of the two for MACs, tokens and password hashes.
+\end{definition}
+
+\subsection{Fernet: authenticated symmetric encryption}
+
+Fernet is the high-level recipe of the \texttt{cryptography} package for symmetric encryption: you get a key and two functions, and all the choices (algorithm, mode, IV, integrity) are made correctly for you.
+
+\begin{minted}{python}
+from cryptography.fernet import Fernet, InvalidToken
+
+key = Fernet.generate_key()     # 32 random bytes, URL-safe base64: keep it secret
+f = Fernet(key)
+
+token = f.encrypt(b"my deepest secret")
+print(f.decrypt(token))                    # b'my deepest secret'
+print(f.extract_timestamp(token))          # Unix time of encryption (readable without the key)
+
+try:
+    f.decrypt(token, ttl=60)               # reject tokens older than 60 seconds
+except InvalidToken:
+    print("expired or tampered")
+\end{minted}
+
+\paragraph{What is inside a Fernet token.} The 256-bit key is split into a 128-bit \emph{signing key} and a 128-bit \emph{encryption key}. Encryption produces
+\[
+    \text{token} = \texttt{0x80} \concat \text{timestamp} \concat IV \concat \Enc^{\text{AES-128-CBC}}_{k_e}(\text{PKCS7}(m)) \concat \mathrm{HMAC\text{-}SHA256}_{k_s}(\text{all previous fields}),
+\]
+base64-encoded. In order: a version byte, the 64-bit creation time, a fresh random 128-bit IV, the CBC ciphertext of the padded message, and a 256-bit HMAC tag. This is \textbf{encrypt-then-MAC} authenticated encryption (\cref{sec:symmetric}): on decryption the HMAC is verified first, in constant time, and \emph{any} modification of the token (one flipped bit) raises \texttt{InvalidToken} before decryption is even attempted. This rules out the bit-flipping and padding-oracle attacks that plain CBC suffers from. Because the IV is random, encrypting the same message twice gives two different tokens.
+
+\paragraph{The timestamp and \texttt{ttl}.} The timestamp travels in clear (anyone can read when a token was created) but it is covered by the HMAC, so it cannot be altered. With \mintinline{python}{decrypt(token, ttl=N)} tokens older than $N$ seconds are rejected. As discussed in class, this limits \textbf{replay}: an attacker who captures a valid token can resend it, but only inside a short window. (It does not detect a replay inside the window; for that you need nonces or sequence numbers.) \mintinline{python}{encrypt_at_time()} and \mintinline{python}{decrypt_at_time()} let you set the time explicitly, which is mainly useful for testing.
+
+\begin{remark}[Two imprecisions from class]
+\leavevmode
+\begin{itemize}
+    \item It was said that an attacker \enquote{can remove the timestamp and add another}. He cannot: the timestamp is inside the HMAC, so changing it invalidates the token. Only whoever holds the key (and uses \texttt{encrypt\_at\_time}) chooses the timestamp.
+    \item Fernet was described as using \enquote{the most advanced AES}. It uses AES-128 in CBC mode with HMAC-SHA256: a sound and conservative design, but not AES-256 or AES-GCM. To choose a specific algorithm, mode and IV you must use the low-level \texttt{hazmat} layer.
+\end{itemize}
+\end{remark}
+
+\subsubsection{Several keys and key rotation: MultiFernet}
+
+\begin{minted}{python}
+from cryptography.fernet import Fernet, MultiFernet
+
+old = Fernet(Fernet.generate_key())
+token = old.encrypt(b"encrypted last year")
+
+new = Fernet(Fernet.generate_key())
+mf = MultiFernet([new, old])    # the FIRST key encrypts; all keys are tried to decrypt
+
+print(mf.decrypt(token))        # works: falls back to the old key
+rotated = mf.rotate(token)      # decrypt with old, re-encrypt with new (keeps the timestamp)
+print(new.decrypt(rotated))     # once all tokens are rotated, the old key can be retired
+\end{minted}
+
+\textbf{Key rotation} means periodically replacing the encryption key, so that a key leak exposes less data and a stolen old key eventually becomes useless. With MultiFernet you put the new key \emph{in front} of the list: new data are encrypted with it, old data remain readable, and \texttt{rotate()} re-encrypts old tokens under the new key. In class it was also suggested to keep the keys of different correspondents in one MultiFernet. That works, but then you no longer know \emph{which} key decrypted a token, i.e.\ who sent it; rotation is the intended use.
+
+\subsection{Deriving a key from a password: PBKDF2}
+
+A Fernet key must be 32 random bytes, but people remember passwords. A password must \textbf{never be used directly as a key}: it is short, low-entropy and predictable (\cref{sec:base-mechanisms}). A \emph{key derivation function} turns it into a key of the right length.
+
+\begin{minted}{python}
+import base64, os
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+password = b"correct horse battery staple"
+salt = os.urandom(16)           # random, one per user/file, stored IN CLEAR with the data
+
+kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                 iterations=600_000)
+key = base64.urlsafe_b64encode(kdf.derive(password))   # Fernet wants base64
+token = Fernet(key).encrypt(b"secret notes")
+
+# Later: same password + same salt + same iterations -> same key
+kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                 iterations=600_000)                    # a KDF object is single-use
+print(Fernet(base64.urlsafe_b64encode(kdf.derive(password))).decrypt(token))
+\end{minted}
+
+\begin{definition}[PBKDF2]
+\emph{Password-Based Key Derivation Function 2} computes the key by iterating HMAC (here HMAC-SHA256) $c$ times over the password and a \textbf{salt}. It is deterministic: the same password, salt and $c$ give the same key, so only the salt and $c$ need to be stored, never the key.
+\end{definition}
+
+The two parameters do different jobs:
+\begin{itemize}
+    \item The \textbf{salt} is not secret. It makes the derivation different for each user or file: identical passwords give different keys, and an attacker cannot precompute a table of password $\to$ key (a \emph{rainbow table}) once and reuse it against everybody. He must attack each salt separately.
+    \item The \textbf{iteration count} makes each guess deliberately slow. The legitimate user pays $c$ HMACs once per login (a fraction of a second); an attacker trying a dictionary of guesses pays $c$ HMACs \emph{per guess}. With $c = 600{,}000$ (the 2023 OWASP recommendation for PBKDF2-HMAC-SHA256) an offline attack is $600{,}000$ times slower than with a single hash. The count must grow over time as hardware gets faster.
+\end{itemize}
+
+\begin{remark}
+In class the iterations were said to make the key \enquote{unpredictable}. More precisely, they make guessing \emph{expensive}; the key can never be less predictable than the password it comes from. A weak password (\texttt{123456}) is found in the first few guesses whatever $c$ is. For password storage, memory-hard functions such as scrypt and Argon2 (also in \texttt{cryptography}) are preferred today, because they also defeat GPU parallelism.
+\end{remark}
+
+\subsection{Low-level AES and the image demo}
+
+With the \texttt{hazmat} layer you choose algorithm, mode and IV yourself, and you also handle padding:
+
+\begin{minted}{python}
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+
+key = os.urandom(32)            # AES-256
+iv = os.urandom(16)             # fresh random IV for every message (CBC)
+
+padder = padding.PKCS7(128).padder()            # CBC needs whole 128-bit blocks
+data = padder.update(b"attack at dawn") + padder.finalize()
+
+enc = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+ct = enc.update(data) + enc.finalize()
+
+dec = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+unpadder = padding.PKCS7(128).unpadder()
+print(unpadder.update(dec.update(ct) + dec.finalize()) + unpadder.finalize())
+\end{minted}
+
+Nothing here protects integrity: this is the raw CBC of \cref{sec:symmetric}, and Fernet exists precisely to add the HMAC around it.
+
+The lecture closed with the classic demonstration of why ECB must not be used (\cref{sec:symmetric}): encrypt the raw pixels of an image with AES in different modes and save the result as an image again.
+
+\begin{minted}{python}
+import os
+from PIL import Image                                  # pip install pillow
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+img = Image.open("plain.png").convert("RGB")
+data = img.tobytes()
+data += b"\x00" * (-len(data) % 16)                    # pad to whole blocks
+key = os.urandom(16)
+
+def encrypt(mode):
+    enc = Cipher(algorithms.AES(key), mode).encryptor()
+    ct = enc.update(data) + enc.finalize()
+    return Image.frombytes("RGB", img.size, ct[: img.width * img.height * 3])
+
+encrypt(modes.ECB()).save("ecb.png")                   # outlines still visible
+encrypt(modes.CBC(os.urandom(16))).save("cbc.png")     # uniform noise
+encrypt(modes.CTR(os.urandom(16))).save("ctr.png")     # uniform noise
+\end{minted}
+
+In ECB equal 16-byte plaintext blocks (areas of the same colour) give equal ciphertext blocks, so the outlines of the image survive encryption, even though every individual block is perfectly encrypted. In CBC and CTR every block depends on the IV/nonce and on its position, so the result is indistinguishable from noise.
+
+\begin{summary}
+\begin{itemize}
+    \item Hash with \texttt{sha256sum} / \texttt{hashlib}; inputs are bytes, and one invisible newline changes the digest. Python's \texttt{hash()} is not cryptographic.
+    \item HMAC with a random key from \texttt{secrets}; verify with \texttt{hmac.compare\_digest} or \texttt{verify()}, never \texttt{==} (timing attacks).
+    \item Fernet = AES-128-CBC with random IV + HMAC-SHA256 (encrypt-then-MAC) + authenticated timestamp. \texttt{ttl} bounds the replay window; MultiFernet handles key rotation.
+    \item Never use a password as a key: derive it with PBKDF2 (random salt against precomputation, many iterations against guessing), or better scrypt/Argon2.
+    \item The \texttt{hazmat} layer gives raw modes without integrity; the image demo shows ECB leaking structure while CBC and CTR do not.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+You compute \texttt{sha256sum notes.txt} in a terminal and \texttt{hashlib.sha256(b"meeting at 5").hexdigest()} in Python. The file was saved from a text editor and contains the text \texttt{meeting at 5}. The digests differ. Is SHA-256 non-deterministic? What happened?
+\end{exercise}
+\begin{solution}
+No: cryptographic hashes are deterministic. The editor saved the file with a trailing newline (\texttt{meeting at 5\textbackslash n}, or \texttt{\textbackslash r\textbackslash n} on Windows), so the two inputs differ by one or two bytes, and by the avalanche effect the digests are completely different. Hashing \texttt{b"meeting at 5\textbackslash n"} in Python gives the same digest as \texttt{sha256sum}.
+\end{solution}
+
+\begin{exercise}
+A web service checks API request tags with \texttt{if tag == expected:}. Explain the attack this enables and the fix.
+\end{exercise}
+\begin{solution}
+\texttt{==} on bytes returns as soon as it finds a differing byte, so a tag whose first $j$ bytes are correct takes slightly longer to reject than one whose first byte is wrong. By sending many forged tags and timing the responses, the attacker finds the first byte (the value that takes longest), then the second, and so on: about $256 \times 32$ attempts for a 32-byte tag instead of $2^{256}$. Fix: \texttt{hmac.compare\_digest(tag, expected)}, which runs in time independent of where the bytes differ (or use the library's \texttt{verify()} method).
+\end{solution}
+
+\begin{exercise}
+An attacker intercepts a Fernet token. (a) What can he learn without the key? (b) Can he change the message, or make an old token pass a \texttt{ttl=60} check by rewriting its timestamp? (c) What can he still do, and how is it limited?
+\end{exercise}
+\begin{solution}
+(a) The creation time (the timestamp is in clear) and the approximate length of the message (from the ciphertext length); not its content, since it is AES-encrypted with a random IV. (b) No: the version, timestamp, IV and ciphertext are all covered by HMAC-SHA256 under the signing key, and any change makes \texttt{decrypt} raise \texttt{InvalidToken}. (c) He can replay the unmodified token. With \texttt{ttl=60} the receiver rejects it after 60 seconds, so replay is possible only inside that window; detecting replays inside the window needs a nonce or sequence number in the message.
+\end{solution}
+
+\begin{exercise}
+An application stores, for each user, a random 16-byte salt and a Fernet-encrypted file whose key is $\mathrm{PBKDF2\text{-}HMAC\text{-}SHA256}(\text{password}, \text{salt}, 600{,}000)$. The database leaks. (a) Why does the salt not need to be secret? (b) How much more work is a 10-million-word dictionary attack against one user, compared with keys derived by a single SHA-256 of the password? (c) What would change if all users shared the same salt?
+\end{exercise}
+\begin{solution}
+(a) The salt's job is not secrecy but uniqueness: it makes each user's derivation different, so the attacker cannot reuse work across users or precompute tables. The secret is the password. (b) Each guess costs 600{,}000 HMAC computations instead of 1, so $10^7 \times 6 \times 10^5 = 6 \times 10^{12}$ HMACs instead of $10^7$ hashes: $600{,}000$ times more work, per user. A password that is in the dictionary is still eventually found. (c) With a shared salt, users with the same password get the same key (visible in the database), and the attacker can compute the derived key of each dictionary word once and test it against every user simultaneously: the per-user cost advantage disappears.
+\end{solution}

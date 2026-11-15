@@ -1,0 +1,55 @@
+\documentclass[a4paper,11pt]{report}
+
+\makeatletter
+\def\input@path{{styles/}{../styles/}{config/}{../config/}{chapters/}{../chapters/}{frontmatter/}{../frontmatter/}}
+\makeatother
+
+\usepackage{notes}
+\input{config/config}
+
+\makeatletter
+\pdfstringdefDisableCommands{\def\\{ }}
+\hypersetup{
+    pdftitle    = {\@thesistitle},
+    pdfauthor   = {\@authorname},
+    pdfsubject  = {Course Notes},
+    pdfkeywords = {Cybersecurity, Cryptography, Network Security, System Security, Secure Coding, Web Security, Mobile Security, ICS Security, Malware Analysis, SIEM, Incident Response, Digital Forensics, NIS2, CRA},
+}
+\makeatother
+
+\begin{document}
+
+\onehalfspacing
+\pagenumbering{roman}
+\maketitle
+\input{frontmatter/copyright}
+\input{frontmatter/ai_disclosure}
+\input{frontmatter/license}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+\part{Foundations and Infrastructure Security}
+\subfile{chapters/01_fundamentals_security_cryptography}
+\subfile{chapters/02_network_security_administration}
+\subfile{chapters/03_computer_security_administration}
+
+\part{Security Engineering}
+\subfile{chapters/04_secure_coding}
+\subfile{chapters/05_sast_workshop}
+\subfile{chapters/06_web_app_security_testing}
+\subfile{chapters/07_mobile_security_testing}
+\subfile{chapters/08_industrial_control_systems}
+
+\part{Security Monitoring, Incident Response, and Forensics}
+\subfile{chapters/09_malware_analysis_detection}
+\subfile{chapters/10_information_correlation}
+\subfile{chapters/11_incident_response}
+\subfile{chapters/12_cyber_forensics}
+
+\part{Governance and Regulation}
+\subfile{chapters/13_nis2_cra_regulations}
+
+\printbibliography[heading=bibintoc]
+
+\end{document}

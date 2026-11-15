@@ -1,0 +1,463 @@
+% Source: Romandini, 05_AsymmetricEncryption; lecture of 14 Nov 2026 (afternoon)
+\section{Asymmetric Encryption}
+\label{sec:asymmetric}
+
+\subsection{Public-key cryptography}
+
+Symmetric encryption needs a shared secret key, and that key has to be exchanged beforehand. Public-key (asymmetric) cryptography removes this need: each party owns a \emph{key pair}, a \textbf{public key} that can be given to anyone and a \textbf{private key} that never leaves its owner. The two keys are mathematically linked, but going from the public key to the private one must be infeasible.
+
+\begin{definition}[One-way trapdoor function]
+A function that is easy to compute but infeasible to invert, \emph{unless} some extra secret information (the \emph{trapdoor}) is known. With the trapdoor, inverting becomes easy.
+\end{definition}
+
+Every public-key cryptosystem starts from such a function: anyone can compute it in the forward direction using the public key, and only the owner of the trapdoor (the private key) can invert it. RSA (Rivest, Shamir, Adleman, 1978 \cite{rsa1978}) was one of the first practical public-key systems and is still widely used. Its trapdoor comes from number theory and prime numbers.
+
+\paragraph{Two uses of a key pair.} Whatever is done with one key of the pair can only be undone with the other one (\cref{fig:pk-uses}).
+\begin{itemize}
+    \item \textbf{Confidentiality}. Alice encrypts with \emph{Bob's public key}. Only Bob's private key can decrypt, so only Bob can read the message. Alice knows the message too, since she wrote it, but nobody else does.
+    \item \textbf{Authenticity (digital signature)}. Alice transforms the message with \emph{her own private key}. Anyone can undo it with Alice's public key, so nothing is secret, but a successful check proves that the message was produced by whoever holds Alice's private key. Here we speak of \textbf{signing} and \textbf{verifying} instead of encrypting and decrypting.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=1.9cm, minimum height=0.8cm, align=center, font=\small},
+    key/.style={font=\footnotesize, align=center},
+    >=Stealth, node distance=0.9cm and 1.0cm]
+    % Row 1: confidentiality
+    \node (m1)                        {$m$};
+    \node[box, right=of m1] (e1)      {$\Enc$};
+    \node[box, right=2.6cm of e1] (d1) {$\Dec$};
+    \node[right=of d1] (o1)           {$m$};
+    \draw[->] (m1) -- (e1);
+    \draw[->] (e1) -- node[above, font=\footnotesize] {ciphertext $c$} (d1);
+    \draw[->] (d1) -- (o1);
+    \node[key, above=0.5cm of e1] (k1) {Bob's \textbf{public} key};
+    \node[key, above=0.5cm of d1] (k2) {Bob's \textbf{private} key};
+    \draw[->] (k1) -- (e1);
+    \draw[->] (k2) -- (d1);
+    \node[font=\footnotesize, below=0.2cm of e1] {Alice};
+    \node[font=\footnotesize, below=0.2cm of d1] {Bob};
+    \node[font=\small\bfseries, anchor=east] at ($(m1.west)+(-0.3,0)$) {(a) Confidentiality};
+    % Row 2: signature
+    \node[below=2.4cm of m1] (m2)     {$m$};
+    \node[box, right=of m2] (e2)      {$\Sign$};
+    \node[box, right=2.6cm of e2] (d2) {$\Vrfy$};
+    \node[right=of d2] (o2)           {ok / fail};
+    \draw[->] (m2) -- (e2);
+    \draw[->] (e2) -- node[above, font=\footnotesize] {$m$, signature $s$} (d2);
+    \draw[->] (d2) -- (o2);
+    \node[key, above=0.5cm of e2] (k3) {Alice's \textbf{private} key};
+    \node[key, above=0.5cm of d2] (k4) {Alice's \textbf{public} key};
+    \draw[->] (k3) -- (e2);
+    \draw[->] (k4) -- (d2);
+    \node[font=\footnotesize, below=0.2cm of e2] {Alice};
+    \node[font=\footnotesize, below=0.2cm of d2] {anyone (e.g.\ Bob)};
+    \node[font=\small\bfseries, anchor=east] at ($(m2.west)+(-0.3,0)$) {(b) Signature};
+\end{tikzpicture}
+\caption{The two uses of a key pair. Encrypting with the receiver's public key gives confidentiality; signing with the sender's private key gives authenticity.}
+\label{fig:pk-uses}
+\end{figure}
+
+\begin{remark}[Why MACs are not signatures]
+In class the lecturer asked whether symmetric keys could give the same guarantee. They cannot. With an HMAC (\cref{sec:base-mechanisms}) the receiver knows that the tag was computed by someone holding the shared key, but \emph{both} Alice and Bob hold it: Bob cannot prove to a third party that Alice wrote the message, since he could have computed the tag himself. A digital signature can only be produced by the single holder of the private key, so it also gives \textbf{non-repudiation}. This is why digital signatures (e.g.\ those used to sign documents) are always built on asymmetric cryptography.
+\end{remark}
+
+\begin{remark}[Signing is not literally \enquote{encrypting with the private key}]
+For RSA the sign operation happens to be the same modular exponentiation as decryption, which is why the lecture describes signing as \enquote{encrypting with the private key}. That is a useful intuition but not a general definition: real schemes sign a \emph{hash} of the message with dedicated padding (e.g.\ RSA-PSS), and schemes such as ECDSA have no encryption counterpart at all. Think of $\Sign$/$\Vrfy$ as their own pair of operations.
+\end{remark}
+
+The whole construction rests on the assumption that the private key stays private: whoever steals it can decrypt everything sent to its owner and sign in their name.
+
+\subsection{Number-theory toolkit}
+
+The lecturer said explicitly that the derivations are not required. You need to understand the ideas and be able to follow a small example.
+
+\begin{definition}[Notation]
+\leavevmode
+\begin{itemize}
+    \item $\Z = \{\dots,-2,-1,0,1,2,\dots\}$: the integers.
+    \item $\Z_n = \{0,1,\dots,n-1\}$: the integers modulo $n$.
+    \item $\gcd(m,n)$: the greatest common divisor of $m$ and $n$. If $\gcd(m,n)=1$, $m$ and $n$ are \textbf{coprime} (relatively prime): they share no factor other than 1.
+    \item $\Z_n^* = \{a \in \Z_n : \gcd(a,n)=1\}$: the elements of $\Z_n$ that are coprime with $n$.
+    \item $\varphi(n) = |\Z_n^*|$: \textbf{Euler's totient function}, the number of integers in $\{1,\dots,n\}$ coprime with $n$.
+\end{itemize}
+\end{definition}
+
+\paragraph{Useful facts.}
+\begin{itemize}
+    \item If $\gcd(m,n)=1$, then $\varphi(mn) = \varphi(m)\,\varphi(n)$.
+    \item If $p$ is prime, every number from 1 to $p-1$ is coprime with it: $\varphi(p) = p-1$.
+    \item Hence, for two distinct primes $p, q$: $\varphi(pq) = (p-1)(q-1)$.
+\end{itemize}
+
+\begin{example}[$\varphi(15)$]
+By counting: the integers from 1 to 14 coprime with 15 are $\{1, 2, 4, 7, 8, 11, 13, 14\}$ (the multiples of 3 and 5 are missing), so $\varphi(15)=8$. With the formula: $15 = 3 \times 5$, so $\varphi(15) = (3-1)(5-1) = 2 \times 4 = 8$.
+\end{example}
+
+The formula is the key point: \emph{if you know the factors} $p$ and $q$, $\varphi(n)$ is immediate; otherwise you would have to count, which is hopeless for a number with hundreds of digits.
+
+\begin{definition}[Modular inverse]
+$d$ is the \textbf{multiplicative inverse} of $e$ modulo $m$, written $d = e^{-1} \bmod m$, if $e \cdot d \equiv 1 \pmod m$. It exists if and only if $\gcd(e,m)=1$.
+\end{definition}
+
+The inverse is computed efficiently with the \textbf{extended Euclidean algorithm}: Euclid's algorithm computes $\gcd(e,m)$ by repeated division; the extended version also expresses the gcd as a linear combination $x\,e + y\,m = \gcd(e,m)$. When the gcd is 1, reducing this mod $m$ gives $x\,e \equiv 1$, so $x \bmod m$ is the inverse.
+
+\begin{example}[Inverse of 17 modulo 3120]
+Euclid's divisions:
+\[
+3120 = 183 \cdot 17 + 9, \qquad 17 = 1 \cdot 9 + 8, \qquad 9 = 1 \cdot 8 + 1.
+\]
+Working backwards:
+\[
+1 = 9 - 8 = 9 - (17 - 9) = 2 \cdot 9 - 17 = 2\,(3120 - 183 \cdot 17) - 17 = 2 \cdot 3120 - 367 \cdot 17.
+\]
+So $-367 \cdot 17 \equiv 1 \pmod{3120}$ and $d = -367 + 3120 = 2753$. Check: $17 \cdot 2753 = 46{,}801 = 15 \cdot 3120 + 1$.
+\end{example}
+
+\begin{theorem}[Euler]
+If $\gcd(a,n)=1$, then $a^{\varphi(n)} \equiv 1 \pmod n$. For $n=p$ prime this is \textbf{Fermat's little theorem}: $a^{p-1} \equiv 1 \pmod p$ for every $a$ not a multiple of $p$.
+\end{theorem}
+
+\subsection{RSA}
+
+RSA needs three operations: key generation, encryption $C(m)$, and decryption $D(c)$.
+
+\begin{definition}[RSA key generation]
+\leavevmode
+\begin{enumerate}
+    \item Choose two large random primes $p$ and $q$ (of similar size).
+    \item Compute the \textbf{modulus} $n = p \cdot q$.
+    \item Compute $\varphi(n) = (p-1)(q-1)$.
+    \item Choose $e$ with $1 < e < \varphi(n)$ and $\gcd(e, \varphi(n)) = 1$.
+    \item Compute $d = e^{-1} \bmod \varphi(n)$, i.e.\ $e \cdot d \equiv 1 \pmod{\varphi(n)}$, with the extended Euclidean algorithm.
+    \item Public key: $(e, n)$. Private key: $(d, n)$.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[RSA encryption and decryption]
+For a message $m$ encoded as an integer with $0 \le m < n$:
+\[
+    c = \Enc(m) = m^{e} \bmod n, \qquad m = \Dec(c) = c^{d} \bmod n.
+\]
+\end{definition}
+
+Note that the keys are not independent: $e$ and $d$ are built from the same $p$, $q$ so that they cancel each other out in the exponent.
+
+\begin{theorem}[Correctness of RSA]
+For every $m \in \Z_n$, $(m^e)^d \equiv m \pmod n$.
+\end{theorem}
+\begin{proof}[Proof sketch]
+Since $ed \equiv 1 \pmod{\varphi(n)}$, we can write $ed = 1 + k\,\varphi(n)$ for some integer $k$. If $\gcd(m,n)=1$, by Euler's theorem
+\[
+(m^e)^d = m^{ed} = m \cdot \left(m^{\varphi(n)}\right)^{k} \equiv m \cdot 1^k = m \pmod n.
+\]
+The case $\gcd(m,n) \neq 1$ (i.e.\ $m$ is a multiple of $p$ or $q$) is handled by applying Fermat's little theorem separately modulo $p$ and modulo $q$ and combining the results with the Chinese remainder theorem.
+\end{proof}
+
+\begin{remark}[\enquote{$e \cdot d = 1$}]
+In class the idea was summarised as \enquote{$e$ times $d$ equals 1, so the exponent becomes 1 and you get $m$ back}. The precise statement is $e \cdot d \equiv 1 \pmod{\varphi(n)}$, \emph{not} modulo $n$ and not literally 1: the inverse is taken modulo $\varphi(n)$ because exponents behave modulo $\varphi(n)$ (Euler's theorem).
+\end{remark}
+
+\paragraph{Why the message must be smaller than $n$.} Decryption returns $m \bmod n$. If $m < n$, then $m \bmod n = m$ and we get the original message. If $m \ge n$ we get a different number. The lecturer's example: with $n=19$, $m=17$ gives back $17 \bmod 19 = 17$, but $m=20$ gives back $20 \bmod 19 = 1$. Longer data must be handled differently (see \cref{sec:rsa-practice}).
+
+\begin{example}[RSA with small numbers]
+\label{ex:rsa-small}
+\leavevmode
+\begin{itemize}
+    \item Primes: $p = 61$, $q = 53$.
+    \item Modulus: $n = 61 \cdot 53 = 3233$.
+    \item Totient: $\varphi(n) = 60 \cdot 52 = 3120$.
+    \item Public exponent: $e = 17$. It is valid because $3120 = 2^4 \cdot 3 \cdot 5 \cdot 13$ and 17 is prime and not among its factors, so $\gcd(17, 3120) = 1$.
+    \item Private exponent: $d = 17^{-1} \bmod 3120 = 2753$ (computed above).
+    \item Public key $(17, 3233)$, private key $(2753, 3233)$.
+\end{itemize}
+\textbf{Encryption} of $m = 1284$: $c = 1284^{17} \bmod 3233$. Exponentiation is done by \emph{square-and-multiply}, reducing mod $n$ at every step so numbers stay small. Since $17 = 16 + 1$:
+\[
+1284^2 \equiv 3059,\quad 1284^4 \equiv 1179,\quad 1284^8 \equiv 3084,\quad 1284^{16} \equiv 2803 \pmod{3233},
+\]
+\[
+c = 1284^{16} \cdot 1284 \equiv 2803 \cdot 1284 \equiv 723 \pmod{3233}.
+\]
+\textbf{Decryption}: $723^{2753} \bmod 3233 = 1284 = m$.
+\end{example}
+
+\paragraph{What is public and what is secret.}
+\begin{table}[H]
+\centering
+\caption{RSA parameters.}
+\label{tab:rsa-params}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Value & Status & Why \\
+\midrule
+$n$          & public & part of the public key (and of the private key) \\
+$e$          & public & the public exponent \\
+$c$          & public & the ciphertext travels over the channel \\
+$d$          & secret & the private exponent \\
+$p$, $q$     & secret & they give $\varphi(n)$, hence $d$ \\
+$\varphi(n)$ & secret & with $e$ it gives $d$; with $n$ it gives $p$ and $q$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{remark}[Why $\varphi(n)$ must stay secret (question from class)]
+A student asked whether $\varphi(n)$ is part of the public key. It is not: only $n$ and $e$ are public. $\varphi(n)$ is used only during key generation, to compute $d = e^{-1} \bmod \varphi(n)$. Computing it from $n$ alone is as hard as factoring $n$. In fact knowing $\varphi(n)$ \emph{is} knowing the factors, because
+\[
+\varphi(n) = (p-1)(q-1) = n - (p+q) + 1 \quad\Longrightarrow\quad p + q = n - \varphi(n) + 1,
+\]
+and $p$, $q$ are then the two roots of $x^2 - (p+q)\,x + n = 0$. So $p$, $q$, $\varphi(n)$ and $d$ must all be kept secret (or simply discarded after key generation, except $d$).
+\end{remark}
+
+\subsection{Generating large primes}
+
+RSA needs primes with hundreds of digits, far too large for any table, so they are generated at random:
+\begin{itemize}
+    \item Primes are not rare: a random $k$-digit number is prime with probability about $1/(2.3\,k)$, since $\ln 10^k \approx 2.3\,k$. A random 100-digit number is prime with probability about $1/230$, and restricting to odd numbers halves the search.
+    \item Method: pick a random odd number, test whether it is prime, repeat until one passes.
+\end{itemize}
+The only expensive part is the \textbf{primality test}.
+\begin{itemize}
+    \item \textbf{Naive}: try dividing by every integer up to $\sqrt{n}$. Fine for small numbers, hopeless for a 300-digit number.
+    \item \textbf{Deterministic fast} (AKS, 2002): polynomial time, but in practice slower than probabilistic tests.
+    \item \textbf{Probabilistic}: the answer is either \enquote{composite} (certain) or \enquote{probably prime}. Real systems use these.
+\end{itemize}
+
+\begin{definition}[Fermat primality test]
+Fermat's little theorem says that if $n$ is prime, then $a^{n-1} \bmod n = 1$ for every $a$ not a multiple of $n$. Pick a random $a$ and compute $x = a^{n-1} \bmod n$:
+\begin{itemize}
+    \item $x \neq 1$: $n$ is \emph{certainly} composite ($a$ is a \emph{witness});
+    \item $x = 1$: $n$ is \emph{probably} prime.
+\end{itemize}
+Repeating with $k$ independent values of $a$ makes the error probability shrink as $k$ grows.
+\end{definition}
+
+The test is one-sided: a single failing $a$ is a proof of compositeness, while any number of passing values is only evidence of primality. Testing \emph{every} $a$ would give certainty but takes far too long, and a negligible error probability is enough. In practice the improved \textbf{Miller--Rabin} test is used, whose error probability after $k$ rounds is at most $4^{-k}$.
+
+\begin{remark}[Why Miller--Rabin and not plain Fermat]
+Some composite numbers, the \emph{Carmichael numbers}, pass the Fermat test for every $a$ coprime with them. The smallest is $561 = 3 \cdot 11 \cdot 17$: $2^{560} \bmod 561 = 1$. Miller--Rabin also checks the intermediate values: writing $560 = 2^4 \cdot 35$, the sequence $2^{35}, 2^{70}, 2^{140}, 2^{280} \bmod 561$ is $263, 166, 67, 1$. A square root of 1 other than $\pm 1$ (here 67) cannot exist modulo a prime, so 561 is exposed as composite.
+\end{remark}
+
+\subsection{Security of RSA}
+
+How can an attacker recover $m$ from $c$, $e$, $n$?
+\begin{itemize}
+    \item \textbf{Brute force}: try every possible private key. As for any cryptosystem, the defence is a large enough key space. With $d$ of about 2048 bits this is completely out of reach, so it is not the real threat.
+    \item \textbf{Inverting directly}: computing an \enquote{$e$-th root modulo $n$} without the trapdoor is believed infeasible.
+    \item \textbf{Mathematical attack: factor $n$}. If an attacker finds $p$ and $q$, they compute $\varphi(n)$ and then $d = e^{-1} \bmod \varphi(n)$ exactly as the owner did. This is the cheapest known route, so the security of RSA rests on the cost of factoring.
+\end{itemize}
+
+\begin{example}[Breaking the toy key]
+For the key of \cref{ex:rsa-small}, factoring $n = 3233$ takes a laptop a fraction of a second: $3233 = 61 \cdot 53$. From there, $\varphi(n) = 3120$ and $d = 17^{-1} \bmod 3120 = 2753$. Real moduli are 2048 bits or more.
+\end{example}
+
+\begin{remark}[Symmetric vs asymmetric: how they break]
+This is the point the lecturer stressed most. A good symmetric cipher has no structure linking anything public to the key: the only generic attack is to brute force or guess the key, so 128 bits are plenty. In public-key cryptography the private key is \emph{mathematically connected} to the public key, so there are attacks much better than brute force (factoring for RSA). That is why asymmetric keys are an order of magnitude longer (2048--3072 bits for RSA vs 128--256 bits for AES), and why a better factoring algorithm, or a quantum computer, would break every RSA key at once.
+\end{remark}
+
+\paragraph{The factoring problem.} Nobody has proved that factoring is hard: there are no theorems or lower bounds, only empirical evidence that the best known algorithms (the general number field sieve) are super-polynomial. There is therefore no guarantee that what is secure today will still be secure tomorrow. Progress is tracked with the \emph{RSA challenge numbers}: the record is \textbf{RSA-250} (250 decimal digits, 829 bits), factored in 2020 with the number field sieve on classical computers. A 2048-bit modulus is far beyond reach.
+
+\begin{remark}[Corrections to what was said in class]
+\leavevmode
+\begin{itemize}
+    \item The lecturer said that the number in \enquote{RSA-260} is the size of the modulus in bits. It depends on the challenge: RSA-100 to RSA-260 count \emph{decimal digits} (RSA-260 has 862 bits), while the later challenge numbers (RSA-576, RSA-768, RSA-896, RSA-2048, \dots) count bits.
+    \item He also mentioned that RSA-260 and RSA-896 had \enquote{recently} been factored using AI agents. As far as can be verified, neither has been factored publicly, with or without AI: the public record remains RSA-250 (829 bits, 2020), as the slides say. Treat AI-assisted cryptanalysis as an open concern, not as an established result.
+    \item He said that \enquote{right now we use RSA-1024 and will move to 2048}. In practice 1024-bit RSA has been deprecated for over a decade; 2048 bits is the current \emph{minimum} (as in the slides), with 3072 bits recommended for long-term security.
+\end{itemize}
+\end{remark}
+
+\paragraph{When randomness fails: shared primes.} In 2012 researchers collected the public keys of millions of TLS and SSH servers on the Internet \cite{heninger2012}. About 0.5\% of the TLS RSA keys could be broken, because different keys \emph{shared a prime factor}: many embedded devices generated $p$ right after boot, before their random number generator had collected enough entropy. If $n_1 = p\,q_1$ and $n_2 = p\,q_2$, then
+\[
+\gcd(n_1, n_2) = p,
+\]
+which Euclid's algorithm computes instantly even for 2048-bit numbers, and then $q_1 = n_1/p$, $q_2 = n_2/p$. Two key owners do not need to know each other: the attacker simply computes pairwise gcds over all collected moduli. The algorithm was fine; the random number generator was not (see \cref{sec:base-mechanisms}).
+
+\subsection{RSA in practice}
+\label{sec:rsa-practice}
+
+\begin{itemize}
+    \item \textbf{Key size}: at least 2048 bits, with $p$ and $q$ random primes of similar size.
+    \item \textbf{Padding}: textbook RSA is \emph{deterministic}, so the same message always gives the same ciphertext, and an attacker can confirm a guess by encrypting it with the public key. Real systems add \emph{random padding} before encrypting (OAEP for encryption, PSS for signatures).
+    \item \textbf{Hybrid encryption}: RSA is much slower than symmetric ciphers and only handles $m < n$. It is therefore not used to encrypt bulk data but to \emph{exchange a symmetric key}: Alice picks a random AES key, encrypts it with Bob's public key, and both then use AES for the actual traffic. This solves the key-distribution problem of symmetric cryptography (two parties who have never met can agree on a key), and it is how secure web connections start.
+    \item \textbf{Signatures}: likewise, one signs a \emph{hash} of the message (\cref{sec:base-mechanisms}) instead of the message itself, so its length does not matter.
+\end{itemize}
+
+\begin{remark}[Textbook RSA is malleable]
+Beyond the slides: without padding RSA is multiplicative, $\Enc(m_1)\cdot\Enc(m_2) = (m_1 m_2)^e = \Enc(m_1 m_2) \bmod n$. An attacker can therefore multiply the ciphertext of an unknown $m$ by $2^e \bmod n$ and obtain a valid ciphertext of $2m$. Proper padding destroys this structure, which is one more reason never to use textbook RSA.
+\end{remark}
+
+In short, asymmetric cryptography is used for what symmetric cryptography cannot do on its own: \textbf{exchanging keys} at the start of a communication and \textbf{digital signatures}.
+
+\subsection{Elliptic curve cryptography}
+
+% Covered briefly in class (intuition only); details from the slides.
+ECC follows the same recipe as RSA, a one-way trapdoor function, but on a different mathematical object.
+\begin{itemize}
+    \item RSA: multiplying two primes is easy; factoring the product is hard.
+    \item ECC: the points of an elliptic curve (e.g.\ $y^2 = x^3 + ax + b$) can be \enquote{added}, and the sum is again a point of the curve.
+\end{itemize}
+
+\paragraph{Point addition.} The line through two points $A$ and $B$ of the curve meets it in exactly one more point; reflecting that point over the $x$ axis gives $A + B$ (\cref{fig:ecc-add}). Adding a point to itself uses the tangent line instead.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=1.1, >=Stealth]
+    \draw[->, black!50] (-1.9,0) -- (2.4,0) node[right] {$x$};
+    \draw[->, black!50] (0,-2.6) -- (0,2.7) node[above] {$y$};
+    % y^2 = x^3 - x + 1, parametrised from the real root r = -1.3247 as x = r + t^2
+    \draw[themeblue, thick, smooth, samples=200, domain=-1.8:1.8, variable=\t]
+        plot ({-1.3247 + \t*\t}, {\t*sqrt((-1.3247+\t*\t)*(-1.3247+\t*\t) - 1.3247*(-1.3247+\t*\t) + 1.7548 - 1)});
+    \draw[black!60, dashed] (-1.8,1) -- (2.0,1);
+    \draw[black!60, dotted, thick] (1,1) -- (1,-1);
+    \fill (-1,1) circle (1.5pt) node[above left] {$A$};
+    \fill (0,1)  circle (1.5pt) node[above left] {$B$};
+    \fill (1,1)  circle (1.5pt) node[above right] {$R$};
+    \fill[red!70!black] (1,-1) circle (1.8pt) node[right] {$A+B$};
+    \node[themeblue, font=\small, anchor=west] at (-1.8,2.3) {$y^2 = x^3 - x + 1$};
+\end{tikzpicture}
+\caption{Point addition on $y^2 = x^3 - x + 1$: the line through $A=(-1,1)$ and $B=(0,1)$ meets the curve again at $R=(1,1)$; its reflection $(1,-1)$ is $A+B$.}
+\label{fig:ecc-add}
+\end{figure}
+
+\begin{definition}[ECC key pair]
+The curve and a fixed point $G$ (the \textbf{generator}) are public, standard parameters. Choose a large random integer $k$ and compute
+\[
+Q = k \cdot G = \underbrace{G + G + \dots + G}_{k \text{ times}}.
+\]
+The \textbf{private key} is the number $k$; the \textbf{public key} is the point $Q$.
+\end{definition}
+
+Computing $Q$ from $k$ is fast (double-and-add, the analogue of square-and-multiply). Going back, i.e.\ finding $k$ from $G$ and $Q$, is the \textbf{elliptic curve discrete logarithm problem}, believed infeasible for well-chosen curves. As the lecturer put it, you cannot just \enquote{divide $Q$ by $G$}: on curve points there is addition (and hence subtraction), but no division.
+
+\paragraph{Advantages over RSA.}
+\begin{itemize}
+    \item Much shorter keys for the same security (\cref{tab:key-sizes}): 256-bit ECC $\approx$ 3072-bit RSA.
+    \item Smaller keys and signatures: less bandwidth and storage.
+    \item Faster key generation and less computation: good for phones, smart cards, IoT.
+    \item RSA keys must keep growing as computers and algorithms improve; ECC scales better.
+    \item For well-chosen curves no shortcut better than generic attacks is known, while factoring has algorithms much faster than brute force.
+\end{itemize}
+
+\paragraph{Drawbacks.}
+\begin{itemize}
+    \item More complex mathematics: harder to understand and to implement correctly.
+    \item Security depends on the curve: use only standard curves (e.g.\ P-256, Curve25519).
+    \item ECDSA signatures need a fresh, unpredictable random number for every signature. If it is repeated or predictable, the private key can be computed from two signatures: this is how Sony's PlayStation 3 signing key was recovered in 2010, because Sony used the same number every time.
+    \item A quantum computer breaks ECC just as it breaks RSA: switching to ECC is no protection.
+    \item RSA is simpler and still everywhere; ECC is the default only in newer systems.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Key sizes (bits) of comparable classical security (NIST SP 800-57).}
+\label{tab:key-sizes}
+\begin{tabular}{@{}ccc@{}}
+\toprule
+Symmetric (e.g.\ AES) & RSA modulus & ECC \\
+\midrule
+80  & 1024   & 160 \\
+112 & 2048   & 224 \\
+128 & 3072   & 256 \\
+192 & 7680   & 384 \\
+256 & 15360  & 512 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{remark}[Bitcoin uses elliptic curves]
+In class Bitcoin was described as RSA-based. It is not: Bitcoin keys and signatures use elliptic curves (ECDSA, and Schnorr signatures since 2021, on the curve secp256k1). The underlying point stands, since a large quantum computer would break those too.
+\end{remark}
+
+\subsection{The quantum threat and post-quantum cryptography}
+
+\begin{itemize}
+    \item On classical computers a 2048-bit RSA modulus cannot be factored; the record is 829 bits (2020).
+    \item \textbf{Shor's algorithm} (1994) \cite{shor1997}: a large enough quantum computer factors integers and computes discrete logarithms efficiently, which breaks \emph{both} RSA and ECC (and Diffie--Hellman).
+    \item Such a computer does not exist yet, but encrypted traffic can be recorded today and decrypted once it does: \textbf{harvest now, decrypt later}. Data that must stay secret for many years is already at risk.
+\end{itemize}
+
+\begin{remark}[Quantum vs symmetric cryptography]
+Quantum computers do not break symmetric ciphers in the same way. The best generic attack (Grover's algorithm) only halves the effective key length, so AES-256 keeps about 128 bits of security. Doubling the key length is enough, which is why AES-256 is recommended for long-term confidentiality. For RSA and ECC no key length is enough.
+\end{remark}
+
+\paragraph{Post-quantum cryptography (PQC).} PQC means new public-key algorithms based on problems that quantum computers are not known to solve (mostly lattices and hash functions); they run on ordinary computers.
+\begin{itemize}
+    \item In August 2024 NIST published the first PQC standards \cite{fips203}: \textbf{ML-KEM} (FIPS 203, key encapsulation, formerly CRYSTALS-Kyber), \textbf{ML-DSA} (FIPS 204, signatures, formerly Dilithium) and \textbf{SLH-DSA} (FIPS 205, hash-based signatures, formerly SPHINCS+).
+    \item NIST plans to \emph{deprecate} RSA and ECC by 2030 and \emph{disallow} them by 2035 \cite{nistir8547}.
+    \item \textbf{Transition}: use classical and post-quantum algorithms together (\emph{hybrid} schemes), so that the result stays secure as long as either is unbroken.
+    \item \textbf{Start now}: know which cryptography your systems use (inventory), and design them so that algorithms can be swapped (\textbf{crypto-agility}).
+\end{itemize}
+
+\begin{remark}[The lecturer's view, and a correction]
+In class the lecturer said he believed no post-quantum standard had been published yet. That is out of date: the NIST standards above have been final since August 2024 (and are on the slides). His other points stand. The hard part is not inventing a quantum-safe algorithm but \emph{migrating}: the web's certificates, document signatures and cryptocurrencies all rely on RSA or ECC, and data already published (e.g.\ on a blockchain) cannot be re-protected after the fact. His personal opinion was that a large quantum computer is still decades away, and that RSA might be weakened sooner by better (possibly AI-assisted) factoring algorithms.
+\end{remark}
+
+\begin{remark}[What to know for the exam]
+The lecturer said that you need not memorise every step of the mathematics or the details of the algorithms. What you must know: public and private keys are mathematically connected (unlike a symmetric key); what is public and what is secret in RSA; why the security of RSA reduces to factoring; why asymmetric keys are longer; what asymmetric cryptography is used for (key exchange and signatures); and why RSA and ECC are not quantum-safe.
+\end{remark}
+
+\begin{summary}
+\begin{itemize}
+    \item Public-key cryptography is built on a one-way trapdoor function. Each party has a public key (shared) and a private key (secret), mathematically linked.
+    \item Encrypt with the receiver's public key: confidentiality. Sign with your own private key: authenticity and non-repudiation, which a MAC cannot give.
+    \item RSA: $n = pq$, $\varphi(n) = (p-1)(q-1)$, $\gcd(e,\varphi(n))=1$, $d = e^{-1} \bmod \varphi(n)$; public $(e,n)$, private $(d,n)$; $c = m^e \bmod n$, $m = c^d \bmod n$, with $m < n$.
+    \item Security of RSA rests on factoring $n$: knowing $p$, $q$ (or $\varphi(n)$) gives $d$. Factoring has no proven lower bound; the record is 829 bits.
+    \item Large primes are found by random search with probabilistic tests (Fermat, Miller--Rabin with error $\le 4^{-k}$). Bad randomness leads to shared primes, broken by a gcd.
+    \item In practice: at least 2048 bits, random padding (OAEP/PSS), hybrid encryption (RSA exchanges an AES key), sign the hash.
+    \item ECC: private key $k$, public key $Q = kG$; same security with much shorter keys (256-bit ECC $\approx$ 3072-bit RSA), but nonces must never repeat.
+    \item Shor's algorithm breaks RSA and ECC; harvest now, decrypt later. Move to post-quantum standards (ML-KEM, ML-DSA) with hybrid schemes and crypto-agility.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+Generate an RSA key pair with $p = 5$, $q = 11$ and $e = 3$. Then encrypt $m = 8$ and decrypt the result. Why would $e = 4$ not be a valid choice?
+\end{exercise}
+\begin{solution}
+$n = 55$, $\varphi(n) = 4 \cdot 10 = 40$. $\gcd(3, 40) = 1$, so $e = 3$ is valid. Inverse: $40 = 13 \cdot 3 + 1$, so $1 = 40 - 13 \cdot 3$ and $d \equiv -13 \equiv 27 \pmod{40}$ (check: $3 \cdot 27 = 81 = 2 \cdot 40 + 1$). Public key $(3, 55)$, private key $(27, 55)$.
+Encryption: $c = 8^3 \bmod 55 = 512 \bmod 55 = 17$. Decryption: $17^{27} \bmod 55 = 8$.
+$e = 4$ is invalid because $\gcd(4, 40) = 4 \neq 1$: $4$ has no inverse modulo 40, so no $d$ exists.
+\end{solution}
+
+\begin{exercise}
+Two devices publish the RSA moduli $n_1 = 10403$ and $n_2 = 10807$. Show how an attacker factors both without any brute force.
+\end{exercise}
+\begin{solution}
+Compute $\gcd(n_1, n_2)$ with Euclid's algorithm: $10807 - 10403 = 404$; $10403 = 25 \cdot 404 + 303$; $404 = 1 \cdot 303 + 101$; $303 = 3 \cdot 101$. So $\gcd = 101$, a shared prime. Then $n_1 = 101 \cdot 103$ and $n_2 = 101 \cdot 107$. From the factors the attacker computes both $\varphi(n_i)$ and both private exponents. The cause is a weak random number generator producing the same $p$ on both devices.
+\end{solution}
+
+\begin{exercise}
+An attacker learns that an RSA key with $n = 3233$ has $\varphi(n) = 3120$. Show that this is enough to factor $n$.
+\end{exercise}
+\begin{solution}
+$p + q = n - \varphi(n) + 1 = 3233 - 3120 + 1 = 114$, and $pq = 3233$. So $p$, $q$ are the roots of $x^2 - 114x + 3233 = 0$: the discriminant is $114^2 - 4 \cdot 3233 = 12996 - 12932 = 64$, giving $x = (114 \pm 8)/2$, i.e.\ $p = 61$, $q = 53$. Knowing $\varphi(n)$ is therefore as good as knowing the factorisation; that is why it must stay secret.
+\end{solution}
+
+\begin{exercise}
+Apply the Fermat test with base $a = 2$ to $n = 15$. What can you conclude? What would you conclude for $n = 561$, where $2^{560} \bmod 561 = 1$?
+\end{exercise}
+\begin{solution}
+$2^{14} = 16384 = 1092 \cdot 15 + 4$, so $2^{14} \bmod 15 = 4 \neq 1$: 15 is \emph{certainly} composite (2 is a witness). For 561 the test returns 1, so the only conclusion is \enquote{probably prime}, which is wrong: $561 = 3 \cdot 11 \cdot 17$ is a Carmichael number. The test only gives certainty in the \enquote{composite} direction, which is why Miller--Rabin, with several random bases, is used in practice.
+\end{solution}
+
+\begin{exercise}
+Alice wants to send Bob a long document so that (i) only Bob can read it and (ii) Bob can prove that Alice wrote it. Which keys does she use, and why doesn't she just RSA-encrypt the whole document?
+\end{exercise}
+\begin{solution}
+(ii) She hashes the document and signs the hash with \emph{her private key}; Bob verifies with Alice's public key. (i) She generates a random symmetric key $k$, encrypts the document (and signature) with AES under $k$, and encrypts $k$ with \emph{Bob's public key}; only Bob's private key recovers $k$. RSA is not applied to the whole document because it is slow and only works on messages smaller than the modulus $n$: asymmetric cryptography is used for key exchange and signatures, symmetric cryptography for bulk data.
+\end{solution}
+
+\begin{exercise}
+Why are RSA keys around 2048--3072 bits long while AES keys are 128--256 bits? Would replacing RSA with 256-bit ECC protect against a future quantum computer?
+\end{exercise}
+\begin{solution}
+For a good symmetric cipher the best generic attack is brute force over the key, so 128 bits already mean $2^{128}$ trials. An RSA private key is mathematically tied to the public modulus, and factoring $n$ is much faster than brute force, so the modulus must be far longer to reach the same security (3072-bit RSA $\approx$ 128-bit symmetric $\approx$ 256-bit ECC). No: Shor's algorithm breaks both factoring (RSA) and the elliptic-curve discrete logarithm (ECC). The protection is post-quantum algorithms such as ML-KEM and ML-DSA, ideally in hybrid mode during the transition.
+\end{solution}
+
+\begin{exercise}
+Explain the expression \enquote{harvest now, decrypt later} and give an example of data for which it is a real concern today.
+\end{exercise}
+\begin{solution}
+An attacker records encrypted traffic today, when it cannot be decrypted, and stores it until a quantum computer able to break the key exchange (RSA or ECC) becomes available. The confidentiality of data that must stay secret for a long time is therefore already at risk, e.g.\ medical records, state secrets, long-term business plans, or personal data protected by law. The countermeasure is to start using post-quantum (or hybrid) key exchange now.
+\end{solution}

@@ -1,0 +1,539 @@
+% Sources: Prandini, "Introduction" slides 46-132 and lecture of 13 Nov 2026;
+%          Romandini, 01_Introduction slides 11-20 and lecture of 14 Nov 2026 (morning, first part).
+\section{Vulnerabilities and Defence}
+\label{sec:vulnerabilities-defence}
+
+\subsection{Attack surface}
+
+\begin{definition}[Attack vector, attack surface]
+Every possible way of interacting with a system, whether intended by design or purely incidental, is also available to an attacker: it is an \textbf{attack vector}. The set of all vectors is the \textbf{attack surface}.
+\end{definition}
+
+A totally isolated computer is of no interest, so every useful system has \emph{legitimate} interaction paths. The attacker's idea is to use them in ways the designer did not have in mind, to stimulate the system into reacting in unforeseen ways.
+
+Each vector combines one or more \emph{access channels}: \textbf{physical}, \textbf{cyber} (remote access via cable or wireless), and \textbf{human}. The attacker's most common goal is to use some vector to trigger \emph{unexpected behaviour} in the victim system, either by exploiting existing software or by injecting software built for the purpose (malware: worms, spyware, ransomware, trojan horses).
+
+\subsection{Vulnerabilities and exploits}
+
+A \enquote{perfect} system (i)~is designed to do only what the legitimate user needs and (ii)~does only what it was designed to do. In such a system threats could not materialise; attacks succeed only because of errors:
+\begin{itemize}
+    \item errors in identifying the attack surface: \textbf{porosity}, i.e.\ a vector exists where it should not (e.g.\ a machine that only needs to be a web server, left with USB ports enabled and the screen unlocked);
+    \item errors in defining a policy or implementing a mechanism: \textbf{vulnerability}.
+\end{itemize}
+
+\begin{definition}[Vulnerability]
+A weakness or flaw of a system, of its controls, of a process, or of an architecture that can be exploited by a threat to compromise security. It can be \emph{structural} (in hardware or software), depend on the \emph{configuration} (perfectly written software configured to accept an empty password), or depend on \emph{incorrect use} (overfilling a system beyond the amount of data it can handle).
+\end{definition}
+
+\begin{definition}[Exploit, proof of concept]
+An \textbf{exploit} is a tool (code or technique) that takes advantage of a vulnerability to make a threat materialise: the concrete instrument used to compromise the system. It can be \emph{technical} (cracking) or \emph{human} (social engineering). A \textbf{proof of concept} (PoC) is a demonstration that makes the problem verifiable (code, steps, or evidence).
+\end{definition}
+
+\begin{remark}[Vulnerable does not mean exploitable]
+A vulnerability can be known \emph{in theory} for years before anyone manages to build the piece of software, hardware, or procedure that actually triggers it; that piece is the exploit. Conversely, some vulnerabilities can never be exploited, e.g.\ a flaw in a library function that no code path ever calls (unreachable code).
+\end{remark}
+
+\begin{example}[The house]
+Romandini's running example maps the whole vocabulary onto a house.
+\begin{center}
+\begin{tabularx}{0.9\textwidth}{@{}l X@{}}
+\toprule
+Term & In the example \\
+\midrule
+System          & The house \\
+Threat          & The burglar (and a thunderstorm, which is a threat too, but accidental: a safety concern) \\
+Vulnerability   & A hole in the window \\
+Exploit         & A ladder that reaches the window. On the 18th floor of a skyscraper the hole is still a vulnerability, but there is no practical exploit \\
+Attack          & The burglar climbs the ladder and steals \\
+Countermeasure  & Repairing the window (a \emph{patch}, which removes this vulnerability) and installing a camera (a \emph{preventive/detective} measure that also helps against vulnerabilities not yet known) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+\end{example}
+
+\begin{example}[Kinds of vulnerabilities]
+\leavevmode
+\begin{itemize}
+    \item A switch forwards packets to unintended recipients when its table is full: \emph{hardware constraint}.
+    \item A router accepts any topology announcement it receives: \emph{intrinsic feature of the protocol}.
+    \item A user clicks a link without checking the source: \emph{human error in applying a procedure}.
+    \item A process overwrites memory that does not belong to it: \emph{software implementation error}.
+    \item A process interprets data bytes as commands: \emph{software design error} (command and SQL injection; or the bug in Mozilla's PDF renderer, itself written in JavaScript, where a crafted PDF made Firefox and Thunderbird \emph{execute} embedded JavaScript instead of rendering a page).
+    \item A machine handling confidential data has its USB ports enabled: \emph{error in the security policy}.
+\end{itemize}
+Some of these cannot be avoided (real components have finite memory); others are behaviours, implementation, or design errors.
+\end{example}
+
+The most useful vulnerabilities for an attacker are those that allow \textbf{installing malware}, because code running on the victim gives almost unlimited freedom. Malware can be classified by its main goal: \emph{spreading} (worms, e.g.\ Stuxnet in its first phase), \emph{stealing data} (spyware), \emph{extortion} (ransomware), \emph{remote control} (trojan horses, RATs, botnet agents).
+
+\paragraph{Non-technological factors.}
+\begin{itemize}
+    \item \emph{Process definition}: listing every element and every possible interaction, deciding which are allowed and under which conditions, and enabling everyone to enforce and check the rules, all under real-world constraints (cost, time, regulations, social factors).
+    \item \emph{People's behaviour}: rules broken \emph{involuntarily} (ignorance, inability, laziness) or \emph{deliberately} (hostility, corruption, coercion, idealism).
+\end{itemize}
+
+\subsection{Vulnerable elements}
+
+\subsubsection{Environment and availability}
+A service must be powered and connected to be available. Reliable infrastructure is expensive, so it is shared in \textbf{data centres}:
+\begin{itemize}
+    \item \emph{housing / co-location}: space and connectivity for the customer's own systems;
+    \item \emph{managed housing}: dedicated hardware also administered by the provider;
+    \item \emph{hosting}: specific services (storage, web, mail) on shared hardware. The \emph{cloud} is a special case of hosting.
+\end{itemize}
+A high-availability data centre must guarantee: resilience of the structure (natural, man-made, and internal causes such as fire; note that safety systems can themselves cause damage), physical access control (perimeter, guards, sectors, multi-factor entry, video surveillance), and reliable infrastructure services (power, cooling, network connectivity). Data centres are the new critical infrastructures: some even have external concrete panels as protection against explosive attacks.
+
+\begin{remark}[Eggs in one basket]
+On average, cloud services are more available than on-premises ones: large providers can afford the best professionals and manage many machines in one place far more efficiently than one server in every company's basement. But concentrating everything on a few providers means that a single outage takes down a large share of services at once.
+\end{remark}
+
+\subsubsection{Physical security}
+Defences usually focus on network attacks against software, but \textbf{physical access bypasses them}. Main threats: theft of storage or of the whole machine, connection of data-collection devices, and booting an arbitrary operating system. Examples:
+\begin{itemize}
+    \item \emph{on-site attacks}: BadUSB, Thunderspy, hardware keyloggers, keystroke injection, disk un/plugging, air-gap jumping;
+    \item \emph{physical side channels}: power analysis, timing analysis (naively coded programs leak secrets through execution time), electromagnetic emissions (TEMPEST), optical/acoustic eavesdropping (Lamphone, smartphone gyroscopes), voice commands injected with a laser.
+\end{itemize}
+
+\begin{example}[Physical attacks explained in class]
+\leavevmode
+\begin{itemize}
+    \item \emph{Boot from USB}: a drive plugged into the back of a server waits for the next reboot; if the machine boots from it, the attacker's OS runs and all the access control configured by the administrator is gone.
+    \item \emph{Hardware keyloggers} sit between keyboard and USB port and record every keystroke, either storing it (to be recovered later) or sending it out over Wi-Fi in real time; the same can be done on the video path with a device between the HDMI port and the monitor.
+    \item \emph{Keystroke injection}: a device that looks like a USB drive but declares itself as a keyboard and types commands (e.g.\ opens a terminal and runs a script).
+    \item \emph{Disk unplugging}: with a transparently encrypted disk, the password is asked at power-on. Cutting only the data cable while keeping the disk powered lets the attacker connect it to their own machine while it is still unlocked.
+    \item \emph{Laser microphones}: the vibrations of a window pane can be read from a distance with a laser. Conversely, the MEMS microphones of voice assistants also react to light, so a modulated laser fired from hundreds of metres can \enquote{speak} silent commands (e.g.\ \enquote{open the garage door}).
+    \item \emph{Side channels for exfiltration}: on an air-gapped system with perfect network filtering, data can still leak through power consumption (e.g.\ of a smart-card reader). TEMPEST is a decades-old military programme for shielding equipment, since cathode-ray-tube monitors acted as antennas broadcasting the screen contents.
+\end{itemize}
+\end{example}
+
+\subsubsection{Devices}
+\begin{itemize}
+    \item \textbf{Meltdown}: lets a process read the protected memory of the operating system (practically all Intel CPUs).
+    \item \textbf{Spectre}: lets a process read the memory of other processes (practically all modern CPUs).
+    \item \textbf{Rowhammer}: repeatedly accessing memory rows flips bits in physically adjacent rows owned by another process.
+    \item \textbf{Power glitching}: manipulating the supply voltage induces illicit behaviour in a component.
+\end{itemize}
+
+Hardware vulnerabilities are among the most worrying because devices cannot be replaced easily: designing a new CPU takes years, and nobody throws away expensive server CPUs at 20\% of their expected lifetime. After Spectre and Meltdown, data centres had to apply software patches that disable the vulnerable optimisations (speculative execution), losing performance.
+
+\begin{remark}
+In class the slowdown was described as \enquote{half the speed}; the measured overhead of the mitigations depends heavily on the workload, from a few percent up to around 30\% for system-call-intensive tasks.
+\end{remark}
+
+\subsubsection{Networks}
+
+\paragraph{Wi-Fi.} Impersonating an internal user requires breaking the wireless protection. \emph{War driving} (driving around scanning for open or weakly protected networks) gave attackers an internal position in countless company networks.
+
+\begin{table}[H]
+\centering
+\caption{Generations of Wi-Fi protection.}
+\label{tab:wifi}
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Standard & Key facts and weaknesses \\
+\midrule
+WEP  & Pre-shared key, RC4 stream cipher, key combined with a 24-bit IV. With enough traffic the IV repeats and the key can be recovered (design flaw). \\
+WPA  & Interim fix: TKIP replaces the IV scheme. Personal mode (PSK) has no forward secrecy: anyone knowing the key can decrypt all traffic. Enterprise mode authenticates each user. \\
+WPA2 & Long considered secure. KRACK (2017): key reinstallation attacks (some clients install an all-zero key). Short PSK when WPS is used. \\
+WPA3 & Robust ciphers; PSK replaced by SAE (Dragonfly handshake). Dragonblood: downgrade to WPA2 via MITM, and implementation flaws enabling password partitioning. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Sniffing.} A switch should send each frame only to the recipient's port, but if the destination MAC is not in its CAM table it broadcasts the frame. \textbf{MAC flooding} fills the table with fake addresses, so the switch behaves like a hub and the attacker sees all traffic. This follows from a hardware limitation (finite table size), so it cannot be designed away entirely; it must be limited by configuration (e.g.\ port security) and detected (details in the network security module).
+
+\paragraph{Hijacking.} Routing and naming protocols are \enquote{gullible}:
+\begin{itemize}
+    \item \textbf{ARP poisoning} (local): convince hosts that the attacker has the victim's IP address;
+    \item \textbf{BGP poisoning} (global): announce that the best route to a network goes through the attacker;
+    \item \textbf{pharming}: make the victim resolve a domain name to the attacker's address.
+\end{itemize}
+The Internet protocols (IP, BGP, \dots) were designed by a small cooperative community that wanted things to work quickly, with no security built in: a router simply believed an announcement that a network was reachable through a neighbour. In 2008, a misconfigured announcement by Pakistan Telecom diverted worldwide YouTube traffic to its routers for a few hours, where it was discarded.
+
+All of them enable a \textbf{man-in-the-middle} (MITM) attack: the attacker receives the traffic between two parties and can read and modify it before (possibly) forwarding it.
+
+\subsubsection{Software}
+Once physical security is ensured, we must guarantee that the software is exactly what we want (the boot chain, from power-on to the running applications, is protected by \emph{Secure Boot}, covered in the computer security module) and that it works correctly. Programming errors are practically inevitable, so keeping software \textbf{up to date} is essential. However, updates themselves are a risk: where do they come from (supply chain attacks, repository poisoning) and have they been tested (CrowdStrike)?
+
+\subsection{The vulnerability life cycle}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1.25cm,
+    ev/.style={rotate=40, anchor=south west, font=\footnotesize, inner sep=1pt}]
+    \fill[themeblue!20] (2.5,-0.12) rectangle (6,0.12);
+    \draw[thick,{Stealth}-{Stealth}] (-0.5,0) -- (11,0);
+    \foreach \x/\t/\l in {0/v/Vulnerability introduced, 2.5/e/Exploit released in the wild,
+        4.5/d/Discovered by the vendor, 6/0/Disclosed publicly, 7/s/AV signatures released,
+        8/p/Patch released, 10/a/Patch deployment completed} {
+        \draw (\x,-0.15) -- (\x,0.15);
+        \node[ev] at (\x,0.2) {\l};
+        \node[below, font=\footnotesize] at (\x,-0.15) {$t_{\t}$};
+    }
+    \draw[|-|] (2.5,-0.9) -- node[below, font=\footnotesize] {zero-day attack} (6,-0.9);
+    \draw[|-|] (6,-0.9) -- node[below, font=\footnotesize] {follow-on attacks} (10,-0.9);
+    \draw[|-|] (2.5,-1.6) -- node[below, font=\footnotesize] {window of exposure} (10,-1.6);
+\end{tikzpicture}
+\caption{Life cycle of a software vulnerability \cite{bilge2012}.}
+\label{fig:vuln-lifecycle}
+\end{figure}
+
+Reading the timeline: the vulnerability is introduced unknowingly ($t_v$) and sits harmlessly as long as no exploit exists. When an exploit is released in the wild ($t_e$), the zero-day window opens: the exploit works, but nobody knows and nobody can design a countermeasure. At some point the vendor or a researcher discovers the flaw ($t_d$) and works on a fix; then it is disclosed publicly ($t_0$) and is no longer a zero-day, so everyone can think of countermeasures, but also every attacker, including the unskilled ones, now knows it. Antivirus vendors release signatures ($t_s$), the vendor releases the patch ($t_p$), and the problem is solved only when every vulnerable system is patched ($t_a$), which in practice is an asymptote rather than an endpoint.
+
+\begin{definition}[Zero-day]
+A \textbf{zero-day vulnerability} is unknown to those who should be interested in mitigating it, first of all the vendor, so no patch exists and it is highly exploitable. A \textbf{zero-day attack} exploits it before public disclosure ($t_e$ to $t_0$).
+\end{definition}
+
+A researcher who finds a vulnerability reports it; an attacker who finds it keeps it secret and builds an exploit, which is why zero-days are so valuable. AI agents that can scan enormous code bases for vulnerabilities make this race faster on both sides.
+
+\begin{definition}[Window of opportunity / exposure]
+The time between the first active exploit ($t_e$) and the moment the patch has been released \emph{and applied} ($t_a$). It grew from 54 days on average in 2005 to almost 12 months in 2014.
+\end{definition}
+
+\begin{remark}
+Attacks \emph{intensify} after disclosure, because everyone learns of the vulnerability: mass scans typically start about 15 minutes after a CVE is published. Patching late is therefore very dangerous.
+\end{remark}
+
+Vulnerabilities are actively hunted (e.g.\ Google Project Zero, bug bounty programmes, brokers such as Zerodium), and ready-made exploits are collected in public databases (Exploit-DB, CVE Details, Packet Storm).
+
+\subsection{Coordinated Vulnerability Disclosure}
+
+Why publish vulnerabilities at all, if attackers read the announcements too? Disclosure is done \emph{for the defenders}:
+\begin{itemize}
+    \item potential victims learn that they are vulnerable and can protect themselves even without a patch: a filter in front of a vulnerable web server that drops the malicious packets, or simply switching off a non-critical service until it is safe;
+    \item it puts \emph{pressure on the vendor}. When non-disclosure was common, many vendors ignored reported problems, because acknowledging them hurts reputation and fixing them is unpaid work.
+\end{itemize}
+Disclosing \emph{too early} (before the vendor had time to prepare a fix) prolongs the period of follow-on attacks; \emph{never} disclosing leaves victims unaware. Coordination balances the two.
+
+\begin{definition}[Coordinated Vulnerability Disclosure, CVD]
+Whoever discovers a vulnerability reports it confidentially to the vendor or operator, with the information needed to verify it, and allows reasonable time to prepare fixes or mitigations before any details are published. Goal: reduce the risk for users and give them the information they need to protect themselves.
+\end{definition}
+
+\begin{table}[H]
+\centering
+\caption{Phases of CVD. A \emph{coordinator} (e.g.\ a CERT) can facilitate the exchanges, especially with multiple vendors.}
+\label{tab:cvd}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Phase & Main participant & Outcome \\
+\midrule
+1. Discovery     & Researcher               & Documents the problem \\
+2. Reporting     & Reporter                 & Sends a confidential report \\
+3. Triage        & Vendor or operator       & Verifies the flaw, assigns a priority \\
+4. Remediation   & Vendor or operator       & Prepares and verifies fixes or mitigations \\
+5. Communication & Parties involved         & Informs those concerned, possibly the public \\
+6. Deployment    & Administrators and users & Apply the remedies \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A disclosure is characterised by \emph{recipients} (vendor, selected parties, or the public), \emph{timing} (relative to the remedies and the deadline), and \emph{level of detail} (essential information or full technical description).
+
+\begin{itemize}
+    \item \textbf{Private} disclosure: to selected recipients. \textbf{Public}: publicly accessible. \textbf{Partial}: only part of the information. \textbf{Non-disclosure}: never published.
+    \item \textbf{Full disclosure}: complete technical details, often with a PoC. Historically, it meant publishing \emph{without waiting} for the patch.
+    \item \textbf{Embargo}: period of confidentiality before publication. \textbf{Disclosure deadline}: planned publication date (e.g.\ 90 days in the CERT-EU policy). It can be anticipated (active exploitation, uncooperative vendor) or extended (concrete progress on the fix).
+\end{itemize}
+
+\begin{definition}[Remediation vs mitigation]
+\textbf{Remediation} (fix) \emph{eliminates} the vulnerability, e.g.\ a patch that corrects the code. \textbf{Mitigation} (workaround) \emph{reduces} the risk or its effects without necessarily eliminating the vulnerability, e.g.\ disabling a feature or restricting access.
+\end{definition}
+
+\paragraph{Supporting artefacts.}
+\begin{itemize}
+    \item \emph{Vulnerability report}: problem, affected systems, reproduction, impact. \emph{Triage}: validity check and priority. \emph{Security advisory}: information on the flaw, updates, and mitigations for users.
+    \item \emph{VDP} (Vulnerability Disclosure Policy/Program): the policy document (scope, rules, expected responses) and the people and procedures that handle reports. \texttt{security.txt} (RFC 9116), served at \texttt{/.well-known/security.txt}, makes contacts and policy easy to find.
+    \item \emph{Bug bounty}: reward for valid reports (optional). \emph{Safe harbor}: declared protection for good-faith research within the policy.
+    \item Standards: ISO/IEC 29147 (disclosure), ISO/IEC 30111 (handling).
+\end{itemize}
+
+\begin{definition}[CVE, CWE, CVSS]
+\leavevmode
+\begin{itemize}
+    \item \textbf{CVE} (Common Vulnerabilities and Exposures): unique identifier of a \emph{specific} known vulnerability in software or hardware, e.g.\ CVE-2026-109618; the entry says which products are affected and describes the flaw. Managed by MITRE, with bodies such as the US National Vulnerability Database (NVD) enriching the entries. \enquote{Which vulnerability?}
+    \item \textbf{CWE} (Common Weakness Enumeration): \emph{category} of the type of weakness. \enquote{What kind of problem?}
+    \item \textbf{CVSS} (Common Vulnerability Scoring System): characteristics and technical \emph{severity score}. \enquote{How severe, technically?} It is summarised as a score from 0 to 10, or expressed as a vector string detailing the sub-aspects: how the vulnerability is reached (local or across the planet), how easy it is to trigger, which preconditions or privileges are needed, and what the attacker can do (take the system down, make it execute arbitrary actions, \dots).
+\end{itemize}
+Operational priority also depends on the context of the affected system, not only on the CVSS score.
+\end{definition}
+
+Attackers monitor the public CVE feeds and start mass scans for a new vulnerability within minutes of its publication, often before knowing whether it is really exploitable. A CVE can be published even when no exploit exists. The number of CVEs published per year has been growing roughly exponentially.
+
+\begin{remark}[Terminology]
+Romandini calls the community norm of publishing every vulnerability \enquote{full disclosure}, but the process he describes (private report to the developers, about 90 days to prepare a patch, then publication) is \emph{coordinated} disclosure. In the strict sense, full disclosure means publishing all details, historically without waiting for the patch.
+\end{remark}
+
+\begin{remark}[An evolving scenario]
+Respecting an embargo is a matter of courtesy, not law. Generative AI makes it easier to build an exploit from a mere rumour, and large AI companies compete to be credited with discoveries, so follow-up attacks can appear even \emph{before} publication.
+\end{remark}
+
+\begin{table}[htbp]
+\centering
+\caption{PHP2Shell mapped onto the vulnerability life cycle (\cref{fig:vuln-lifecycle}).}
+\label{tab:php2shell}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Phase & Date & Event \\
+\midrule
+$t_v$ & 2012--2025 & Flaws introduced in PHP 5.4.0 (session state handling, 2012), 7.3.0 (hashtable corruption on a failed allocation, 2018), and 8.5.0 (backtrace of fatal errors, 2025). They sat in the code for up to 14 years. \\
+ & 2024 & Existence of the flaws theorised by the PHP Foundation, but no working exploit known. \\
+$t_e$? & 11 Aug 2026 & Researchers (Calif, OpenAI) report evidence matching the theory: a working exploit may already be in the wild. \\
+$t_d$ & Aug--Oct 2026 & Two months of careful study to build a robust fix. \\
+ & 17 Oct 2026 & Attacks clearly traceable to the vulnerabilities: moving on becomes urgent. \\
+$t_0$ & 20 Oct 2026 & Advance notice, without details, of a security release for 21 October 14:00 UTC fixing two critical bugs (CVSS v4.0 9.2). Detailed CVEs and a CERT-EU advisory follow on the 21st. \\
+ & 21 Oct, 11:00 & No patch yet: the University of Bologna announces that affected applications must be stopped. At 12:00 Virtuale, EOL, remote working, attendance tracking, and others go offline. \\
+$t_p$ & 21 Oct, 13:30 UTC & Fixes released for the supported branches (8.2 to 8.5). Older branches may be patched by redistributors (e.g.\ Linux distributions), or never. \\
+$t_a$ & 21 Oct 19:00 -- 22 Oct 11:30 & Unibo restores the most critical applications the same evening and the rest the next morning. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{example}[PHP2Shell, October 2026]
+A real vulnerability life cycle, summarised in \cref{tab:php2shell}.
+Why it was an earthquake: PHP powers about 69\% of the world's websites, and the flaws allow \emph{unauthenticated remote code execution}: any server can be made to run code chosen by the attacker without any credentials. According to Prandini, what keeps the score below 10 is that the code runs with the privileges of the web server, which (hopefully) is not root. With no antivirus signature and no patch, the only mitigation was to make the services unreachable, by attackers \emph{and by everyone}: Unibo deliberately sacrificed \emph{availability} to protect integrity and confidentiality. A departmental application running on a PHP version too old to receive a patch was still offline weeks later.
+\end{example}
+
+\begin{remark}
+In class the disclosure was described as coming \enquote{roughly 90 days} after the August report; the dates give about 70 days. Publication was anticipated with respect to a standard deadline because of active exploitation, exactly the case foreseen by CVD policies.
+\end{remark}
+
+\subsection{Securing a system: the NIST Cybersecurity Framework}
+
+The \textbf{NIST CSF 2.0} \cite{nistcsf2024} describes high-level cybersecurity \emph{outcomes} (what to achieve, not how) for organisations of any sector and size.
+\begin{itemize}
+    \item Structure of the Core: \emph{Functions} $\to$ \emph{Categories} $\to$ \emph{Subcategories}, each with an identifier (e.g.\ ID.RA-01: \enquote{Vulnerabilities in assets are identified, validated, and recorded}).
+    \item \emph{Profiles} describe the current vs target state; \emph{Tiers} describe how rigorous risk management is.
+    \item Six Functions, addressed concurrently: \textbf{Govern} at the centre (strategy, roles, policy, oversight, supply-chain risk), surrounded by \textbf{Identify}, \textbf{Protect}, \textbf{Detect}, \textbf{Respond}, \textbf{Recover}. The path is circular: when you finish, you start again.
+\end{itemize}
+
+\begin{remark}[Outcomes vs checklist]
+The CSF states \emph{what} to achieve and leaves organisations free to choose \emph{how}; in that sense it is \enquote{outcomes, not a checklist}. Prandini nonetheless calls it a \enquote{glorified checklist}, meaning it as praise: checklists are extremely useful to avoid forgetting things under pressure, Profiles help set priorities by importance, and they let you measure improvement over time (e.g.\ from the current to the target level of password complexity).
+\end{remark}
+
+\begin{remark}[The Italian framework]
+The NIST CSF was designed for the US market, made of large companies. Italy is a constellation of micro, small, and medium enterprises, so the national cybersecurity lab of the academic community (CINI), together with the national authorities (today ACN, the National Cybersecurity Agency), derived the \emph{Framework Nazionale per la Cybersecurity e la Data Protection}. It keeps the NIST structure and adds \textbf{contextualisation}: requirements are collected from sector associations (e.g.\ of small woodworking or metalworking shops) instead of asking each micro-company, and each context receives only the relevant subset of subcategories, plus aspects that the NIST framework does not cover at all.
+\end{remark}
+
+\subsubsection{Identify}
+\enquote{The organization's current cybersecurity risks are understood.} You cannot protect what you do not know (just as, in science and engineering, you cannot control what you cannot measure). It is one of the trickiest parts: it means knowing everything about the system (people, computers, appliances, connections, processes) and also the \emph{external} threats, i.e.\ which actors are likely to be interested in attacking you. Categories: Asset Management (ID.AM), Risk Assessment (ID.RA), Improvement (ID.IM).
+\begin{itemize}
+    \item \emph{Assets}: inventories of hardware, software, services, data, and data flows, prioritised by criticality.
+    \item \emph{Threats} (internal and external, informed by threat intelligence) and \emph{vulnerabilities} (identified, validated, recorded).
+    \item \emph{Risk}: likelihood and impact of threats exploiting vulnerabilities; responses chosen, prioritised, and tracked.
+    \item \emph{Improvement}: lessons from tests, exercises, and operations.
+\end{itemize}
+
+\paragraph{Risk model (NIST SP 800-30).} Risk is a function of the degree of harm and of its likelihood:
+\begin{center}
+\begin{tikzpicture}[node distance=1.6cm,
+    b/.style={draw, rounded corners, fill=themeblue!8, align=center, font=\footnotesize, minimum height=0.9cm},
+    l/.style={font=\scriptsize\itshape, above}]
+    \node[b] (s) {Threat\\source};
+    \node[b, right=of s] (e) {Threat\\event};
+    \node[b, right=of e] (v) {Vulnerability};
+    \node[b, right=of v] (i) {Adverse\\impact};
+    \draw[-Stealth] (s) -- node[l] {initiates} (e);
+    \draw[-Stealth] (e) -- node[l] {exploits} (v);
+    \draw[-Stealth] (v) -- node[l] {causing} (i);
+\end{tikzpicture}
+\end{center}
+The likelihood depends on the source's capability and intent and on the vulnerability's severity, mitigated by the effectiveness of the security controls in place; risk combines impact and likelihood.
+
+\paragraph{Offensive security.} Putting yourself in the attacker's shoes to check whether vulnerabilities exist, estimate the real impact of attacks, and test countermeasures.
+
+\begin{remark}
+Never test resources that are not your own without explicit permission, and only within agreed \emph{rules of engagement}: there can be legal consequences, unforeseen effects even in good faith, and effects on the networks crossed to reach the target. When a company hires a penetration tester, about a third of the time goes into drafting the contract: the perimeter, what is and is not allowed, and how to behave when something is discovered.
+\end{remark}
+
+\begin{example}[An escalation dilemma]
+A bank asks for a stealthy test, to see whether its own defence team notices the attack. The tester discovers a vulnerability exposing millions of credit card numbers. Staying silent may let a real attacker exploit it first; speaking up spoils the test. The contract must define an \emph{escalation process} in advance: whom to contact, and how, without the tester being held liable if the company then decides to go on.
+\end{example}
+
+Testing has a conceptual limit: \textbf{coverage}. The absence of problems cannot be proven; we can only stress the system as thoroughly as possible. Three levels of depth:
+\begin{itemize}
+    \item \textbf{Vulnerability Assessment} (VA): scanners and configuration/code reviews find \emph{known} weaknesses. Typically you fingerprint the system as precisely as possible (e.g.\ Linux kernel 6.8, Apache 2.4, PHP 7.3) and look up those versions in the CVE databases. It is almost harmless, but it does not go further: it cannot find zero-days, cannot tell the real impact without trying to exploit, and ignores the system's specifics, so false positives happen (e.g.\ a service declares a vulnerable version but has been patched).
+    \item \textbf{Penetration Testing} (PT): a human tester goes as far as possible by actually exploiting vulnerabilities. Exploitation confirms them and can reveal new, deeper ones. More realistic and detailed, but \emph{risky}.
+    \item \textbf{Red Team operations}: realistic attack simulations that also test whether Detect and Respond notice the attack.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.2cm,
+    b/.style={draw, rounded corners, fill=themeblue!8, minimum width=2.4cm, minimum height=0.8cm, font=\small}]
+    \node[b] (p) {Planning};
+    \node[b, right=of p] (d) {Discovery};
+    \node[b, right=of d] (a) {Attack};
+    \node[b, fit=(p)(a), inner sep=0pt, minimum height=0.7cm, yshift=-1.5cm, fill=themegray!10] (r) {};
+    \node at (r) {\small Reporting};
+    \draw[-Stealth] (p) -- (d);
+    \draw[-Stealth] (d) -- (a);
+    \draw[-Stealth] (a.north) to[bend right=40] node[above, font=\scriptsize] {additional discovery} (d.north);
+\end{tikzpicture}
+\caption{Penetration testing phases (NIST SP 800-115).}
+\label{fig:pt-phases}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Planning}: rules, management approval, goals. No testing yet.
+    \item \textbf{Discovery}: information gathering, scanning, vulnerability analysis.
+    \item \textbf{Attack}: verify vulnerabilities by exploiting them; new access leads back to discovery.
+    \item \textbf{Reporting}: runs alongside all the other phases.
+\end{itemize}
+
+Test types depend on how much the attacker knows about the target and how much the target knows about the test (OSSTMM):
+
+\begin{table}[H]
+\centering
+\caption{Penetration test types by knowledge of the two parties.}
+\label{tab:pt-types}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Type & Attacker knows target & Target knows of test \\
+\midrule
+Blind            & no      & yes \\
+Double blind     & no      & no \\
+Grey box         & partial & yes \\
+Double grey box  & partial & partially \\
+Tandem           & full    & yes \\
+Reversal         & full    & no \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{remark}
+Blind tests may look more realistic, but they waste the expert's time on information gathering that is better spent on the truly hidden details. When possible, tests run on a \emph{replica} of the target, but some systems are too complex or too critical to replicate faithfully. This matters most for industrial (OT) systems: actually exploiting a flaw that crashes the control system of a power grid, or leaves a valve stuck in a chemical plant, can black out a city or cause an explosion. One builds a \emph{digital twin}, a virtual model of the plant, and tests that instead, but the model may be wrong, especially when PLCs run proprietary stacks whose internals are unknown: you risk testing something that is not the real thing.
+\end{remark}
+
+Following a \textbf{methodology} makes tests consistent, repeatable, and unbiased: OSSTMM (open, general), OWASP (web applications), PCI DSS \S11.3 (payment sector), NIST SP 800-115 (US government standard), ISSAF (no longer actively developed).
+
+\subsubsection{Protect}
+\enquote{Safeguards to manage the organization's cybersecurity risks are used.} Lower the likelihood of adverse events and limit their impact. Categories: Identity Management, Authentication and Access Control (PR.AA), Awareness and Training (PR.AT), Data Security (PR.DS), Platform Security (PR.PS), Technology Infrastructure Resilience (PR.IR).
+\begin{itemize}
+    \item \textbf{System access control}, the keystone of protection, follows the \textbf{AAA} approach: \emph{authentication} (only legitimate users: MFA, certificates; plus identity and credential management, i.e.\ provisioning and revocation), \emph{authorisation} (what each user may do, following \emph{least privilege} and \emph{separation of duties}), and \emph{accountability} or auditing (logs of what happens, to notice suspicious activity and, after an incident, to discover that a rule was too permissive and refine the policy); plus physical access control.
+    \item \textbf{Network access control}: segmentation, firewalls, DMZs, VPNs, 802.1X. \textbf{Zero trust}: no trust based on network location alone; a policy decision point and a policy enforcement point decide every access, per session.
+    \item \textbf{Data protection} at rest, in transit, and in use: confidentiality via encryption (disks, databases, backups; TLS, IPsec, SSH); integrity via hashes, MACs, digital signatures, code signing; key management; tested backups; configuration management.
+    \item \textbf{Other measures}: hardening and secure baselines (remove unneeded services), patch management, malware prevention (allow-listing, EDR), secure development, filtering (e-mail, web, IPS, DoS protection), awareness training.
+\end{itemize}
+
+\subsubsection{Detect}
+\enquote{Possible cybersecurity attacks and compromises are found and analyzed.} For lack of time, money, skills, or by mistake, it is never possible to implement every protective measure, and some attacks will get through, so they must be found in time. Categories: Continuous Monitoring (DE.CM), Adverse Event Analysis (DE.AE).
+\begin{itemize}
+    \item \textbf{Continuous monitoring} of networks (IDS, flow analysis), hosts and data (EDR, host IDS, file integrity monitoring), personnel activity, service providers, and the physical environment. Logs are collected centrally, e.g.\ in a \emph{SIEM}.
+    \item \textbf{Adverse event analysis}: correlate multiple sources, integrate threat intelligence, estimate impact and scope. \emph{Signatures} catch known attacks; \emph{anomaly detection} also finds unknown ones but with more false positives; \emph{threat hunting} searches proactively. An incident is declared when events meet defined criteria.
+\end{itemize}
+
+\subsubsection{Respond}
+\enquote{Actions regarding a detected cybersecurity incident are taken.} Contain the effects following plans prepared and tested in advance: the worst thing that can happen is not knowing what to do and, under pressure, doing exactly the wrong thing. At the end of the response you should know what happened and why, i.e.\ which shortcomings of Identify and Protect let the attack succeed. Categories: Incident Management (RS.MA), Analysis (RS.AN), Reporting and Communication (RS.CO), Mitigation (RS.MI).
+
+In NIST SP 800-61r3, Govern, Identify, and Protect are \emph{preparation}; Detect, Respond, and Recover \emph{are} incident response; lessons learned feed Improvement (this replaces the older cycle: preparation, detection and analysis, containment/eradication/recovery, post-incident activity).
+\begin{itemize}
+    \item \textbf{Manage and analyse}: execute the response plan; triage, prioritise, and escalate (not first-come, first-served); find the root cause and magnitude; \emph{preserve evidence} with integrity and provenance (chain of custody); notify stakeholders and authorities (GDPR: 72\,h; NIS2: 24\,h early warning); e.g.\ after a data leak the people concerned must be told, so they can expect a wave of phishing.
+    \item \textbf{Containment}: prevent the incident from spreading (isolate hosts or segments, disable accounts, block addresses), without destroying evidence.
+    \item \textbf{Eradication}: remove the attacker's foothold (malware, persistence, breached accounts) and fix all exploited vulnerabilities on every affected host.
+\end{itemize}
+
+\subsubsection{Recover}
+\enquote{Assets and operations affected by a cybersecurity incident are restored.} Categories: Incident Recovery Plan Execution (RC.RP), Recovery Communication (RC.CO).
+\begin{itemize}
+    \item Prioritise recovery by business criticality against the agreed \emph{recovery time} and \emph{recovery point objectives} (RTO, RPO).
+    \item Verify the integrity of backups \emph{before} restoring; restore, verify, and confirm normal operation.
+    \item Declare the end of recovery and write an after-action report; communicate with approved messages.
+    \item \emph{Tactical} recovery executes the playbook; \emph{strategic} recovery improves all Functions with the lessons learned.
+    \item Recovery planning is part of \emph{business continuity}: even a very impactful attack must not take the company down forever.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{The CSF Functions at a glance. Govern ties them together; lessons learned flow back into Identify.}
+\label{tab:csf}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Function & Key question & Examples \\
+\midrule
+Identify & What do we have, what could go wrong? & Inventories, risk assessment, VA, PT \\
+Protect  & How do we prevent or limit harm?      & Access control, segmentation, encryption, hardening, patching, training \\
+Detect   & How do we notice an attack?           & Monitoring, IDS/EDR, SIEM correlation, threat hunting \\
+Respond  & What do we do when it happens?        & Response plan, triage, forensics, containment, eradication, notification \\
+Recover  & How do we get back to normal?         & Verified backups, restoration, communication, lessons learned \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{summary}
+\begin{itemize}
+    \item Attack surface = set of all attack vectors (physical, cyber, human channels).
+    \item Attacks succeed through porosity (unexpected vectors) or vulnerabilities (policy or mechanism errors); an exploit takes advantage of a vulnerability. A vulnerability without a practical exploit (unreachable code, the 18th-floor window) does no harm.
+    \item Physical access and hardware flaws bypass software defences, and hardware cannot be patched easily.
+    \item Zero-day attack: before public disclosure. Window of exposure: from first exploit to patch \emph{applied}. Attacks increase after disclosure.
+    \item CVD: confidential report, time to fix (typically up to 90 days), then coordinated publication; disclosure serves defenders and pressures vendors. Remediation removes the flaw; mitigation reduces its risk (PHP2Shell: Unibo traded availability for integrity and confidentiality).
+    \item CVE = which vulnerability; CWE = what kind; CVSS = how severe.
+    \item NIST CSF 2.0: Govern, Identify, Protect, Detect, Respond, Recover.
+    \item VA finds known vulnerabilities (false positives); PT exploits them (realistic but risky, especially in OT, where digital twins are used). Coverage can never be complete.
+    \item Protect relies on AAA: authentication, authorisation, accountability.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+What is the difference between porosity and a vulnerability? Give an example of each.
+\end{exercise}
+\begin{solution}
+Porosity is an error in identifying the attack surface: a vector exists where it should not (e.g.\ a forgotten debug port reachable from the Internet). A vulnerability is an error in defining a policy or implementing a mechanism (e.g.\ a buffer overflow in a legitimate network service).
+\end{solution}
+
+\begin{exercise}
+Using the vulnerability life cycle, explain why the window of exposure does not end when the vendor releases the patch, and why attacks often \emph{increase} after disclosure.
+\end{exercise}
+\begin{solution}
+Systems remain vulnerable until the patch is actually deployed ($t_a$), which can take weeks or months after its release ($t_p$). After public disclosure ($t_0$) every attacker knows the vulnerability and can build an exploit (mass scans start within minutes), while many systems are still unpatched: these are the follow-on attacks.
+\end{solution}
+
+\begin{exercise}
+A critical vulnerability is announced but no patch is available yet. What can an administrator do? Classify the action.
+\end{exercise}
+\begin{solution}
+Apply a \emph{mitigation} (workaround): disable the vulnerable feature, restrict access (firewall rules, VPN only), or take the service offline, as Unibo did for PHP2Shell. It reduces the risk without removing the vulnerability; the \emph{remediation} is applying the patch once released.
+\end{solution}
+
+\begin{exercise}
+Why is a penetration test more informative than a vulnerability assessment, and why is it riskier?
+\end{exercise}
+\begin{solution}
+VA only detects \emph{known} vulnerabilities, cannot confirm them (false positives), and stops at the surface. PT actually exploits them: this confirms them, shows what an attacker can really reach, and the access obtained can reveal deeper vulnerabilities. Exploitation, however, can damage or disrupt the target, which is why rules of engagement, authorisation, and possibly a replica are needed.
+\end{solution}
+
+\begin{exercise}
+For each of the following, name the CSF Function: (a) keeping an inventory of all servers; (b) enabling MFA; (c) correlating logs in a SIEM; (d) isolating an infected host; (e) restoring data from verified backups.
+\end{exercise}
+\begin{solution}
+(a) Identify. (b) Protect. (c) Detect. (d) Respond (containment). (e) Recover.
+\end{solution}
+
+\begin{exercise}
+Using the house example, identify threat, vulnerability, exploit, attack, and countermeasures. Then explain why a hole in a window on the 18th floor of a skyscraper is a vulnerability but poses little risk, and give a software analogue.
+\end{exercise}
+\begin{solution}
+Threat: the burglar. Vulnerability: the hole in the window. Exploit: a ladder reaching the window. Attack: climbing in and stealing. Countermeasures: repairing the window (patch) and installing cameras (prevention/detection, useful also against unknown vulnerabilities). On the 18th floor there is no practical exploit, so the probability factor of the risk is close to zero even though the weakness exists. Software analogue: a buffer overflow in a library function that no code path ever calls (unreachable code).
+\end{solution}
+
+\begin{exercise}
+Map the PHP2Shell events onto the vulnerability life cycle ($t_v$, $t_e$, $t_d$, $t_0$, $t_p$, $t_a$). Why did the University of Bologna shut down its applications, and which security property did it sacrifice?
+\end{exercise}
+\begin{solution}
+$t_v$: 2012--2025 (flaws introduced in PHP 5.4, 7.3, 8.5). $t_e$: probably around August 2026 (researchers' report), certainly by 17 October (traceable attacks). $t_d$: August--October (the PHP team studies the fix). $t_0$: 20--21 October (advance notice and CVEs). $t_p$: 21 October 13:30 UTC. $t_a$: 21--22 October for Unibo; never for branches that receive no patch. Between $t_0$ and $t_p$ the vulnerability (unauthenticated RCE, CVSS 9.2) was public, follow-on attacks were expected, and no patch or signature existed, so the only mitigation was making the services unreachable: Unibo sacrificed availability to protect integrity and confidentiality.
+\end{solution}
+
+\begin{exercise}
+Why are vulnerabilities disclosed publicly at all, given that attackers start scanning within minutes of a CVE publication? What goes wrong if they are disclosed too early, or never?
+\end{exercise}
+\begin{solution}
+Disclosure serves defenders: they learn they are vulnerable and can mitigate even without a patch (filtering, disabling a feature, switching off a service), and it pressures vendors, who historically ignored undisclosed reports. Too early, before the vendor can prepare a fix, it prolongs the window of follow-on attacks; never, it leaves victims unaware and the vendor without incentive. CVD balances these with a confidential report and an embargo (e.g.\ 90 days), shortened if the flaw is actively exploited.
+\end{solution}
+
+\begin{exercise}
+You must assess the security of the PLCs controlling a chemical plant. Would you run a vulnerability assessment or a penetration test on the live plant? Discuss.
+\end{exercise}
+\begin{solution}
+A VA (fingerprinting versions and matching CVEs) is nearly harmless but cannot find zero-days or estimate the real impact. A PT on the live plant could crash controllers or leave valves stuck, with safety consequences (explosions, environmental damage), so it should not be run there. Options: VA on the live system plus PT on a replica or digital twin, accepting that the model may not match reality (proprietary PLC stacks are hard to model), within strict rules of engagement and an escalation process agreed in advance.
+\end{solution}

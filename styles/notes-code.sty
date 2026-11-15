@@ -1,0 +1,27 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{notes-code}[2026/11/14 Code highlighting settings]
+
+\RequirePackage{xcolor}
+\RequirePackage{minted}
+
+\definecolor{codebg}{rgb}{0.97,0.97,0.97}
+\definecolor{framegray}{rgb}{0.85,0.85,0.85}
+
+\setminted{
+    style=friendly,
+    bgcolor=codebg,
+    frame=single,
+    framerule=0.4pt,
+    rulecolor=framegray,
+    framesep=10pt,
+    linenos=true,
+    breaklines=true,
+    fontsize=\footnotesize,
+    baselinestretch=1.1,
+    xleftmargin=10pt,
+    xrightmargin=10pt
+}
+\setminted[bash]{linenos=false}
+\setminted[text]{linenos=false}
+
+\endinput

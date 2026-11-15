@@ -1,0 +1,48 @@
+# LaTeX auxiliary files
+*.aux
+*.log
+*.out
+*.toc
+*.loe
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex(busy)
+*.xdv
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+*.pyg
+*.data.minted
+*.nav
+*.snm
+*.vrb
+*.idx
+*.ilg
+*.ind
+
+# Minted cache
+_minted-*/
+_minted*/
+
+out/
+**/out/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Python venv
+.venv/
+__pycache__/
