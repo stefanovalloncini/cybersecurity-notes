@@ -1,8 +1,9 @@
-% Source: Romandini, afternoon lecture of 14 Nov 2026 (hands-on part, demo code shown in class)
+% Source: Romandini, afternoon lecture of 14 Nov 2026 (hands-on part, demo code shown in class);
+%         Romandini, ExMaster exercise slides (bit flipping, key reuse, RSA, hybrid encryption, tiny key).
 \section{Hands-on: Cryptography in Python}
 \label{sec:crypto-lab}
 
-At the end of the module the lecturer showed how the primitives seen in theory are used in practice, from the command line and from Python. The code below is a cleaned-up version of what was shown, tested with Python~3.9+ and the \texttt{cryptography} package (\texttt{pip install cryptography}). Two rules apply to all of it:
+At the end of the lecture of 14 November the lecturer showed how the primitives seen so far are used in practice, from the command line and from Python. The code below is a cleaned-up version of what was shown, tested with Python~3.9+ and the \texttt{cryptography} package (\texttt{pip install cryptography}). Two rules apply to all of it:
 \begin{itemize}
     \item use \textbf{well-reviewed libraries} and their high-level interfaces; never implement the primitives yourself;
     \item every function works on \textbf{bytes}, not strings: write \mintinline{python}{b"..."} or call \mintinline{python}{"...".encode()}.
@@ -231,6 +232,125 @@ encrypt(modes.CTR(os.urandom(16))).save("ctr.png")     # uniform noise
 
 In ECB equal 16-byte plaintext blocks (areas of the same colour) give equal ciphertext blocks, so the outlines of the image survive encryption, even though every individual block is perfectly encrypted. In CBC and CTR every block depends on the IV/nonce and on its position, so the result is indistinguishable from noise.
 
+\subsection{Bit flipping: confidentiality is not integrity}
+
+The second demo of the lab slides changes one bit of an encrypted payment order, without knowing the key, and looks at what each mode notices (\cref{subsec:ae}).
+
+\begin{minted}{python}
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.exceptions import InvalidTag
+
+key, iv = os.urandom(32), os.urandom(16)
+
+def crypt(mode, data, encrypt=True):
+    cipher = Cipher(algorithms.AES(key), mode)
+    op = cipher.encryptor() if encrypt else cipher.decryptor()
+    return op.update(data) + op.finalize()
+
+m = b"0123456789ABCDEF" + b"PAY 100 EUR TO B"
+
+ct = bytearray(crypt(modes.CTR(iv), m))
+ct[20] ^= 0x08
+print("CTR:", crypt(modes.CTR(iv), bytes(ct), False))
+
+ct = bytearray(crypt(modes.CBC(iv), m))
+ct[4] ^= 0x08
+print("CBC:", crypt(modes.CBC(iv), bytes(ct), False))
+
+aes, nonce = AESGCM(key), os.urandom(12)
+ct = bytearray(aes.encrypt(nonce, m, None))
+ct[20] ^= 0x08
+try:
+    aes.decrypt(nonce, bytes(ct), None)
+except InvalidTag:
+    print("GCM: InvalidTag")
+\end{minted}
+
+The message is two 16-byte blocks, and byte 20 is the \texttt{1} of \texttt{100}. The characters \texttt{1} (\texttt{0x31}) and \texttt{9} (\texttt{0x39}) differ in a single bit, \texttt{0x08}.
+\begin{itemize}
+    \item \textbf{CTR} prints \texttt{PAY 900 EUR TO B}: the plaintext is the ciphertext XOR a keystream, so flipping a ciphertext bit flips exactly the same plaintext bit. The attacker changed the amount precisely, and decryption raised no error.
+    \item \textbf{CBC}: the bit is flipped in the \emph{first} ciphertext block. The first plaintext block comes out as garbage, but since $C_1$ is XORed into $P_2$, the second block reads \texttt{PAY 900 EUR TO B}. The attacker still controls the change, at the price of one garbled block that the application may never check.
+    \item \textbf{GCM} raises \texttt{InvalidTag}: the authentication tag no longer matches, and no plaintext is released at all.
+\end{itemize}
+Whenever data can be modified on the way, use authenticated encryption (AES-GCM, ChaCha20-Poly1305, or Fernet).
+
+\subsection{Keystream reuse}
+
+The third demo reuses a one-time pad key, the mistake behind WEP's repeated IVs and behind nonce reuse in CTR and GCM (\cref{sec:symmetric}).
+
+\begin{minted}{python}
+import os
+
+def xor(a, b):
+    return bytes(x ^ y for x, y in zip(a, b))
+
+m1 = b"MEET AT NOON IN FRONT OF THE LIBRARY"
+m2 = b"THE PASSWORD IS GREEN BANANA 4242!!!"
+k = os.urandom(len(m1))
+c1, c2 = xor(m1, k), xor(m2, k)
+
+x = xor(c1, c2)
+print(x == xor(m1, m2))
+print(xor(x[:4], b"MEET"))
+\end{minted}
+
+The first line prints \texttt{True}: $c_1 \xor c_2 = m_1 \xor m_2$, the key has vanished. The second prints \texttt{b'THE '}: guessing four characters of one message reveals the same four characters of the other. Sliding likely words (\texttt{THE}, \texttt{AND}, \texttt{PASSWORD}, \dots) along $c_1 \xor c_2$ and keeping the positions where the other side also looks like text (\emph{crib dragging}) recovers both messages piece by piece, without ever touching the key.
+
+\subsection{RSA with the \texttt{cryptography} package}
+
+Asymmetric algorithms live in the \texttt{hazmat} layer. The rules from the lab slides: keys of at least 2048 bits, public exponent 65537, \textbf{PSS} padding for signatures and \textbf{OAEP} for encryption (PKCS\#1 v1.5 only to talk to legacy protocols).
+
+\begin{minted}{python}
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.exceptions import InvalidSignature
+
+alice_sk = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+alice_pk = alice_sk.public_key()
+bob_sk = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+bob_pk = bob_sk.public_key()
+
+pss = padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
+                  salt_length=padding.PSS.MAX_LENGTH)
+oaep = padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),
+                    algorithm=hashes.SHA256(), label=None)
+
+message = b"I owe Bob 100 EUR"
+signature = alice_sk.sign(message, pss, hashes.SHA256())
+alice_pk.verify(signature, message, pss, hashes.SHA256())
+try:
+    alice_pk.verify(signature, b"I owe Bob 900 EUR", pss, hashes.SHA256())
+except InvalidSignature:
+    print("InvalidSignature")
+
+ciphertext = bob_pk.encrypt(b"meet at noon", oaep)
+print(bob_sk.decrypt(ciphertext, oaep))
+print(ciphertext == bob_pk.encrypt(b"meet at noon", oaep))
+\end{minted}
+
+\begin{itemize}
+    \item \mintinline{python}{sign()} hashes the message with SHA-256 and signs the hash with PSS padding, as recommended in \cref{sec:rsa-practice}. Only \texttt{alice\_sk} can produce the signature; anyone with \texttt{alice\_pk} can check it. \mintinline{python}{verify()} returns silently when the signature is valid and raises \texttt{InvalidSignature} as soon as one byte of the message changes.
+    \item Encryption uses Bob's \emph{public} key, decryption Bob's \emph{private} key. The last line prints \texttt{False}: OAEP is randomised, so the same message encrypts differently every time, which defeats the guess-and-compare attack on textbook RSA.
+    \item OAEP with SHA-256 and a 2048-bit key accepts at most $256 - 2 \cdot 32 - 2 = 190$ bytes; longer input raises \texttt{ValueError}. This is the practical face of $m < n$: RSA encrypts keys, not documents.
+\end{itemize}
+
+Continuing the same script, \textbf{hybrid encryption} (\cref{sec:rsa-practice}) takes only a few more lines:
+
+\begin{minted}{python}
+from cryptography.fernet import Fernet
+
+session_key = Fernet.generate_key()
+wrapped = bob_pk.encrypt(session_key, oaep)
+token = Fernet(session_key).encrypt(b"a very long document " * 1000)
+
+unwrapped = bob_sk.decrypt(wrapped, oaep)
+print(len(wrapped), Fernet(unwrapped).decrypt(token)[:21])
+\end{minted}
+
+The RSA part, \texttt{wrapped}, is always 256 bytes (the size of $n$), whatever the length of the document; the 21~kB document itself goes through Fernet. In the lab exercise Alice also signs \texttt{wrapped} with her private key, so that Bob knows who sent the session key: confidentiality comes from Bob's key pair, authenticity from Alice's.
+
 \begin{summary}
 \begin{itemize}
     \item Hash with \texttt{sha256sum} / \texttt{hashlib}; inputs are bytes, and one invisible newline changes the digest. Python's \texttt{hash()} is not cryptographic.
@@ -238,13 +358,15 @@ In ECB equal 16-byte plaintext blocks (areas of the same colour) give equal ciph
     \item Fernet = AES-128-CBC with random IV + HMAC-SHA256 (encrypt-then-MAC) + authenticated timestamp. \texttt{ttl} bounds the replay window; MultiFernet handles key rotation.
     \item Never use a password as a key: derive it with PBKDF2 (random salt against precomputation, many iterations against guessing), or better scrypt/Argon2.
     \item The \texttt{hazmat} layer gives raw modes without integrity; the image demo shows ECB leaking structure while CBC and CTR do not.
+    \item Bit flipping: CTR lets an attacker change chosen plaintext bits, CBC too at the cost of a garbled block; AES-GCM rejects any change. Reusing a keystream leaks $m_1 \xor m_2$.
+    \item RSA: 2048 bits or more, $e = 65537$, PSS to sign, OAEP to encrypt (randomised, at most 190 bytes with a 2048-bit key); bulk data goes through a symmetric session key wrapped with RSA.
 \end{itemize}
 \end{summary}
 
 \subsection*{Exercises}
 
 \begin{exercise}
-You compute \texttt{sha256sum notes.txt} in a terminal and \texttt{hashlib.sha256(b"meeting at 5").hexdigest()} in Python. The file was saved from a text editor and contains the text \texttt{meeting at 5}. The digests differ. Is SHA-256 non-deterministic? What happened?
+You compute \texttt{sha256sum notes.txt} in a terminal and, in Python, \texttt{hashlib.\allowbreak sha256(b"meeting at 5").\allowbreak hexdigest()}. The file was saved from a text editor and contains the text \texttt{meeting at 5}. The digests differ. Is SHA-256 non-deterministic? What happened?
 \end{exercise}
 \begin{solution}
 No: cryptographic hashes are deterministic. The editor saved the file with a trailing newline (\texttt{meeting at 5\textbackslash n}, or \texttt{\textbackslash r\textbackslash n} on Windows), so the two inputs differ by one or two bytes, and by the avalanche effect the digests are completely different. Hashing \texttt{b"meeting at 5\textbackslash n"} in Python gives the same digest as \texttt{sha256sum}.
@@ -269,4 +391,18 @@ An application stores, for each user, a random 16-byte salt and a Fernet-encrypt
 \end{exercise}
 \begin{solution}
 (a) The salt's job is not secrecy but uniqueness: it makes each user's derivation different, so the attacker cannot reuse work across users or precompute tables. The secret is the password. (b) Each guess costs 600{,}000 HMAC computations instead of 1, so $10^7 \times 6 \times 10^5 = 6 \times 10^{12}$ HMACs instead of $10^7$ hashes: $600{,}000$ times more work, per user. A password that is in the dictionary is still eventually found. (c) With a shared salt, users with the same password get the same key (visible in the database), and the attacker can compute the derived key of each dictionary word once and test it against every user simultaneously: the per-user cost advantage disappears.
+\end{solution}
+
+\begin{exercise}
+In the bit-flipping demo, the attacker now wants the CTR-encrypted order to pay recipient \texttt{C} instead of \texttt{B}. Which ciphertext byte must be changed, and with which XOR mask? Would the same trick work against AES-GCM?
+\end{exercise}
+\begin{solution}
+\texttt{B} is \texttt{0x42} and \texttt{C} is \texttt{0x43}, so the mask is \texttt{0x01}, applied to the last byte of the message, index 31 (\texttt{ct[31] \textasciicircum= 0x01}). In CTR the plaintext becomes \texttt{PAY 100 EUR TO C} with no error. Against AES-GCM the tag covers the whole ciphertext, so decryption raises \texttt{InvalidTag}: the attacker would need the key to compute a new tag.
+\end{solution}
+
+\begin{exercise}
+A P-256 public key is known to have a private scalar $d < 1000$ (the eMudhra mistake of \cref{sec:base-mechanisms}). How do you recover $d$ with the \texttt{cryptography} package, and what can you do with it? Is ECDSA broken?
+\end{exercise}
+\begin{solution}
+Try $d = 1, 2, \dots, 999$: for each, \mintinline{python}{ec.derive_private_key(d, ec.SECP256R1())} gives a key whose \mintinline{python}{public_key().public_numbers()} can be compared with the $x$, $y$ coordinates of the target. At most 999 scalar multiplications: a fraction of a second. With $d$ recovered you can sign any message, and the signature verifies with the published public key, i.e.\ you can impersonate the key owner (for a CA, issue certificates in its name). ECDSA and the curve are not broken: a correctly generated $d$ is uniform over about $2^{256}$ values. The failure is entirely in key generation.
 \end{solution}

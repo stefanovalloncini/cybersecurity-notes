@@ -85,7 +85,7 @@ Substitute \emph{blocks} of letters instead of single letters (e.g.\ with blocks
 
 \subsubsection{Enigma}
 
-Polyalphabetic substitution is the basis of the \emph{rotor machines} of World War II, such as the German \textbf{Enigma} and the Japanese \emph{Purple}. Enigma (patented in 1918) was a portable electro-mechanical device:
+Polyalphabetic substitution is the basis of the cipher machines of World War II, such as the German \textbf{Enigma} (a rotor machine) and the Japanese \emph{Purple} (which used telephone stepping switches instead of rotors, but the same idea). Enigma (patented in 1918) was a portable electro-mechanical device:
 \begin{itemize}
     \item a \textbf{plugboard} wired to perform an initial letter substitution;
     \item \textbf{three rotors} set to a daily configuration; each rotor is a substitution, and one or more rotors \emph{step} at each key press, so the same letter is encrypted differently every time;
@@ -100,7 +100,7 @@ The plugboard and the rotors define the key, with about $1.6 \times 10^{20}$ (${
 \end{itemize}
 
 \begin{remark}
-$10^{20}$ keys was enormous for hand work but is small today: a modern computer could search it. Modern keys have hundreds of bits. Breaking Enigma is widely considered to have been decisive for the Allied victory.
+$10^{20}$ ($\approx 2^{67}$) keys was enormous for hand work and for the Bombes, which is why the cribs mattered. By modern standards it is small: still a lot for one computer, but feasible for a large GPU cluster, and modern statistical attacks break Enigma messages on a laptop without trying all settings. AES-128 has $2^{128}$ keys, i.e.\ $2^{61}$ times more. Breaking Enigma is widely considered to have been decisive for the Allied victory.
 \end{remark}
 
 % ------------------------------------------------------------------
@@ -203,7 +203,7 @@ A student asked what the period has to do with security. If the keystream has pe
 \end{tikzpicture}
 \end{center}
 
-The IV is only 24 bits, so it repeats after $2^{24} \approx 16.7$ million packets (hours on a busy network), and some 802.11 cards reset it to 0 at every power cycle. A repeated IV means a repeated seed, hence a repeated keystream: the two-time pad problem above.
+The IV is only 24 bits, so all values are used up after $2^{24} \approx 16.7$ million packets (hours on a busy network), and some 802.11 cards reset it to 0 at every power cycle. With random IVs it is even worse: by the birthday paradox (\cref{sec:base-mechanisms}) a repeated IV is likely after only about $\sqrt{2^{24}} \approx 5000$ packets. A repeated IV means a repeated seed, hence a repeated keystream: the two-time pad problem above. WEP had a second, independent flaw: RC4 is weak when related keys ($\mathrm{IV} \concat K$ with a known, changing IV) are used, and from enough captured packets the attacker recovers $K$ itself (Fluhrer, Mantin, and Shamir, 2001; later refinements need only tens of thousands of packets, a few minutes of traffic).
 \end{example}
 
 \subsubsection{Block ciphers}

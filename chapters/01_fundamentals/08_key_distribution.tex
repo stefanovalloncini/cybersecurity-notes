@@ -1,0 +1,356 @@
+% Source: Romandini, 06_Key_Distribution slides (online lecture; written from the slides only);
+%         ExMaster exercise slides (KDC and cross-realm KDC exercises).
+\section{Key Distribution}
+\label{sec:key-distribution}
+
+Symmetric encryption only works if the two parties share the same key and nobody else knows it; public-key encryption only works if each party has the \emph{right} public key of the other. Neither cipher solves this by itself. A \emph{key distribution model} is the means of delivering a key to two parties who wish to exchange data, without letting anybody else see it. Keys should also be \textbf{changed frequently}: the less data a key protects, the less is lost when an attacker learns it.
+
+This section covers three problems in turn: distributing symmetric keys with a trusted third party, distributing symmetric keys with public-key techniques (including Diffie--Hellman), and distributing public keys, which leads to certificates.
+
+\tikzset{
+    kdparty/.style={draw, rounded corners, fill=themeblue!10, minimum width=1.8cm, minimum height=0.7cm, font=\small\bfseries},
+    kdevil/.style={kdparty, fill=red!15},
+    kdmsg/.style={-{Stealth}, thick},
+    kdlab/.style={font=\footnotesize, fill=white, inner sep=1.5pt},
+}
+
+\subsection{Distributing symmetric keys}
+
+For two parties $A$ and $B$ there are four ways to obtain a shared key:
+\begin{enumerate}
+    \item $A$ selects a key and \textbf{physically delivers} it to $B$.
+    \item A \textbf{third party} selects the key and physically delivers it to $A$ and $B$.
+    \item If $A$ and $B$ have recently used a key, one of them sends the new key to the other \textbf{encrypted with the old one}.
+    \item If $A$ and $B$ each have an encrypted connection to a third party $C$, then $C$ delivers a key to both over those \textbf{encrypted links}.
+\end{enumerate}
+Options 1 and 2 are manual. They are reasonable between two devices that are physically connected (link encryption), but impossible end to end between thousands of users who have never met. Option 3 is a chain: if an attacker ever learns one key, every following key is revealed, since each one travels encrypted under its predecessor. Option 4 is the practical one, and the third party is called a \emph{key distribution centre}.
+
+\paragraph{Number of keys.} If every pair of $N$ endpoints needs its own key, the total is $N(N-1)/2$ (\cref{sec:crypto-intro}); the slide plots it on a log scale, and it grows quadratically:
+\begin{center}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+Endpoints $N$ & Pairwise keys $N(N-1)/2$ & Master keys with a KDC \\
+\midrule
+$1{,}000$   & $\approx 5 \times 10^{5}$ & $1{,}000$ \\
+$10{,}000$  & $\approx 5 \times 10^{7}$ & $10{,}000$ \\
+$100{,}000$ & $\approx 5 \times 10^{9}$ & $100{,}000$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The count matters most when encryption is done end to end at the application level: a network with hundreds of hosts may have thousands of users and processes, each pair needing a key.
+
+\subsection{The key distribution centre}
+
+\begin{definition}[Key distribution centre, master key, session key]
+A \textbf{key distribution centre} (KDC) is a trusted server that distributes keys to the entities of its domain. It relies on a \emph{hierarchy of keys}:
+\begin{itemize}
+    \item each entity shares a long-term \textbf{master key} with the KDC, distributed once by some out-of-band means;
+    \item for each conversation the KDC generates a temporary \textbf{session key}, sends it to the two parties encrypted under their master keys, and the parties discard it at the end.
+\end{itemize}
+\end{definition}
+
+Master keys still have to be distributed somehow, but the scale of the problem drops from $N(N-1)/2$ pairs to $N$ keys, and they are used only to protect short session keys, so they leak very little ciphertext.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[kdparty] (K) at (0,0)  {KDC};
+    \node[kdparty] (A) at (6,0)  {$A$ (initiator)};
+    \node[kdparty] (B) at (12,0) {$B$ (responder)};
+    \foreach \n/\x in {K/0, A/6, B/12} \draw[themegray!60, dashed] (\n.south) -- (\x,-7.2);
+    \draw[kdmsg] (6,-1.1) -- node[kdlab, above] {(1) $ID_A \concat ID_B \concat N_1$} (0,-1.1);
+    \draw[kdmsg] (0,-2.5) -- node[kdlab, above, align=center]
+        {(2) $\Enc_{K_a}(K_s \concat ID_A \concat ID_B \concat N_1)$\\ $\concat\ \Enc_{K_b}(K_s \concat ID_A)$} (6,-2.5);
+    \draw[kdmsg] (6,-3.9) -- node[kdlab, above] {(3) $\Enc_{K_b}(K_s \concat ID_A)$} (12,-3.9);
+    \draw[kdmsg] (12,-5.1) -- node[kdlab, above] {(4) $\Enc_{K_s}(N_2)$} (6,-5.1);
+    \draw[kdmsg] (6,-6.3) -- node[kdlab, above] {(5) $\Enc_{K_s}(f(N_2))$} (12,-6.3);
+    \draw[decorate, decoration={brace, amplitude=5pt}, themegray] (-0.5,-0.8) -- node[left=6pt, font=\footnotesize, align=right] {key\\distribution} (-0.5,-4.2);
+    \draw[decorate, decoration={brace, mirror, amplitude=5pt}, themegray] (12.5,-4.8) -- node[right=6pt, font=\footnotesize, align=left] {authen-\\tication} (12.5,-6.6);
+\end{tikzpicture}
+\caption{Key distribution with a KDC. $K_a$ and $K_b$ are the master keys of $A$ and $B$, $K_s$ the session key, $N_1$ and $N_2$ nonces.}
+\label{fig:kdc}
+\end{figure}
+
+\paragraph{The protocol, step by step} (\cref{fig:kdc}).
+\begin{enumerate}
+    \item $A$ asks the KDC for a session key to talk to $B$, and includes a \textbf{nonce} $N_1$: a fresh random value never used before (a timestamp, a counter, or a random number).
+    \item The KDC answers with two parts. The first is encrypted under $A$'s master key, so only $A$ can read it: the session key $K_s$, plus a copy of the request, so that $A$ can check that the request was not altered on its way to the KDC (e.g.\ $ID_B$ replaced by the attacker's identity), and $N_1$, so that $A$ knows the answer is fresh and not the replay of an old reply. The second part, encrypted under $B$'s master key, is meant for $B$; $A$ cannot read it and simply forwards it.
+    \item $A$ sends $B$ that second part, sometimes called a \emph{ticket}. $B$ learns $K_s$ and that it is meant for a conversation with $A$; since only the KDC knows $K_b$, the ticket must come from the KDC.
+    \item $B$ sends a nonce $N_2$ encrypted with the new session key.
+    \item $A$ replies with $f(N_2)$, a simple transformation such as $N_2 + 1$, encrypted with $K_s$.
+\end{enumerate}
+Steps 4 and 5 are an \emph{authentication} handshake: they convince $B$ that the party at the other end really holds $K_s$, and that step 3 is not an old message being replayed by somebody else. Echoing $N_2$ unchanged would not do, since anyone could resend the ciphertext of step 4 without decrypting it; applying $f$ forces $A$ to decrypt, transform, and re-encrypt.
+
+\begin{remark}[A known weakness: replaying old tickets]
+Beyond the slides. This is essentially the Needham--Schroeder protocol of 1978 \cite{needham1978}. In 1981 Denning and Sacco \cite{denning1981} pointed out a gap: $N_1$ protects $A$, but nothing tells $B$ that the ticket of step 3 is fresh. An attacker who recorded an old run and, much later, learns that run's session key $K_s$ (e.g.\ from a compromised machine) can replay the old step 3, decrypt $B$'s challenge with the old $K_s$, answer it, and be accepted by $B$ as $A$. The fix is to put a \textbf{timestamp} (or a nonce chosen by $B$) inside the ticket and to give session keys a short lifetime. Kerberos, covered in a later lecture, takes exactly this route.
+\end{remark}
+
+\begin{remark}[The KDC is a single point of trust]
+The KDC generates every session key, so it can read every conversation, and whoever compromises it can do the same and impersonate any user. It is also a single point of failure: if it is down, nobody can start a new session. It must be protected, monitored, and usually replicated.
+\end{remark}
+
+\paragraph{Hierarchical key control.} A single KDC for a whole internetwork does not scale. Instead there are \textbf{local KDCs}, each responsible for a small domain (a LAN, a building), and a \textbf{global KDC} above them. Two entities in the same domain use their local KDC; if they are in different domains, the two local KDCs agree on a key through the global KDC. The hierarchy can have three or more levels. It has two advantages: most master keys are shared between a local KDC and its own entities, which makes them easy to distribute, and a faulty or subverted KDC only damages its own local area.
+
+\paragraph{Session key lifetime.} The more often session keys change, the more secure they are, since the attacker has less ciphertext per key to work with. But each distribution delays the start of the exchange and adds load on the network. A balance:
+\begin{itemize}
+    \item \textbf{connection-oriented} protocols (e.g.\ TCP): one session key for as long as the connection stays open, a new one for each new connection (very long connections can be re-keyed periodically);
+    \item \textbf{connectionless} protocols (e.g.\ UDP-based transactions): there is no natural session, so a key is used for a fixed period or a fixed number of transactions.
+\end{itemize}
+
+\paragraph{A toy KDC in Python.} The first exercise of the lab slides implements the KDC with Fernet (\cref{sec:crypto-lab}). The dictionary \texttt{kdc\_db} is the KDC's database; Alice and Bob each know only their own entry.
+
+\begin{minted}{python}
+import secrets
+from cryptography.fernet import Fernet
+
+kdc_db = {"Alice": Fernet.generate_key(), "Bob": Fernet.generate_key()}
+
+def kdc(requester, responder, n1):
+    ks = Fernet.generate_key()
+    for_requester = Fernet(kdc_db[requester]).encrypt(
+        b"|".join([ks, requester.encode(), responder.encode(), n1]))
+    ticket = Fernet(kdc_db[responder]).encrypt(b"|".join([ks, requester.encode()]))
+    return for_requester, ticket
+
+k_alice, k_bob = kdc_db["Alice"], kdc_db["Bob"]
+
+n1 = secrets.token_hex(8).encode()
+for_alice, ticket = kdc("Alice", "Bob", n1)
+ks_a, me, peer, echoed = Fernet(k_alice).decrypt(for_alice).split(b"|")
+assert (me, peer, echoed) == (b"Alice", b"Bob", n1)
+
+ks_b, sender = Fernet(k_bob).decrypt(ticket).split(b"|")
+n2 = secrets.randbelow(2**32)
+challenge = Fernet(ks_b).encrypt(str(n2).encode())
+
+reply = int(Fernet(ks_a).decrypt(challenge)) + 1
+response = Fernet(ks_a).encrypt(str(reply).encode())
+assert int(Fernet(ks_b).decrypt(response)) == n2 + 1
+
+token = Fernet(ks_a).encrypt(b"PAY 100 EUR TO B")
+print(sender, Fernet(ks_b).decrypt(token))
+\end{minted}
+
+The code follows \cref{fig:kdc} line by line: Alice checks her identity, Bob's identity and $N_1$ in the KDC's answer; Bob reads the session key and the sender's name from the ticket; the two \texttt{assert}s are the checks of steps 2 and 5. It prints \texttt{b'Alice' b'PAY 100 EUR TO B'}. Fernet also authenticates every message, so a tampered ticket would raise \texttt{InvalidToken} instead of producing a wrong key.
+
+\subsection{Distributing symmetric keys with public-key cryptography}
+
+Public-key encryption is slow and works on small blocks, so one of its most important uses is to \textbf{encrypt secret keys for distribution} (hybrid encryption, \cref{sec:rsa-practice}). The simplest scheme, proposed by Merkle, needs no KDC and no keys set up in advance:
+\begin{enumerate}
+    \item $A$ generates a fresh key pair and sends $B$ its public key and identity: $PU_a \concat ID_A$.
+    \item $B$ generates a session key $K_s$ and sends it back encrypted: $\Enc_{PU_a}(K_s)$.
+    \item $A$ decrypts with $PR_a$. Both now share $K_s$, and $A$ discards the key pair.
+\end{enumerate}
+No key exists before the exchange and none survives it, and an eavesdropper only sees $PU_a$ and a ciphertext it cannot open. Against an \emph{active} attacker, however, the scheme fails. Darth intercepts message 1 and sends $B$ his own $PU_d \concat ID_A$; $B$ replies with $\Enc_{PU_d}(K_s)$; Darth decrypts it, learns $K_s$, re-encrypts it under $PU_a$, and forwards it to $A$. Both parties believe they share a private key, and Darth reads everything. The scheme only resists passive attacks.
+
+\subsection{Diffie--Hellman key exchange}
+
+Diffie--Hellman (DH), published by Diffie and Hellman in 1976 \cite{diffie1976} together with the very idea of public-key cryptography, was the first public-key scheme. It is not a cipher: it cannot transport an arbitrary message. It lets two parties \textbf{establish a common secret} over a public channel, known only to them, because it depends on secret values that each of them chose. That secret is then used as (or turned into) a symmetric session key. DH and its elliptic-curve variant are used in TLS, SSH, IPsec, Signal, and WPA3.
+
+\begin{definition}[Discrete logarithm problem]
+Let $q$ be a large prime and $a$ a \textbf{primitive root} modulo $q$, i.e.\ a number whose powers $a^1, a^2, \dots, a^{q-1} \bmod q$ produce all the integers $1, \dots, q-1$. Given $y = a^x \bmod q$, computing $y$ from $x$ is fast (square-and-multiply), but finding $x$ from $y$, the \emph{discrete logarithm} of $y$, is believed infeasible for large $q$.
+\end{definition}
+
+\begin{definition}[Diffie--Hellman key exchange]
+\leavevmode
+\begin{enumerate}
+    \item \emph{Global public parameters}: a large prime $q$ and a primitive root $a$ modulo $q$, agreed by all users.
+    \item Alice picks a secret $x_A < q$ and publishes $y_A = a^{x_A} \bmod q$. Bob picks a secret $x_B < q$ and publishes $y_B = a^{x_B} \bmod q$.
+    \item Both compute the shared key:
+    \[
+        K_{AB} = y_B^{\,x_A} \bmod q = y_A^{\,x_B} \bmod q = a^{x_A x_B} \bmod q.
+    \]
+    Alice can compute the first expression, Bob the second, and they are equal because $(a^{x_B})^{x_A} = (a^{x_A})^{x_B}$.
+\end{enumerate}
+\end{definition}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[kdparty] (A) at (0,0) {Alice};
+    \node[kdparty] (B) at (10,0) {Bob};
+    \node[font=\footnotesize, align=center] at (5,0.15) {public: $q$, $a$};
+    \node[font=\footnotesize, align=center, below=0.35cm of A] (sa) {secret $x_A$\\$y_A = a^{x_A} \bmod q$};
+    \node[font=\footnotesize, align=center, below=0.35cm of B] (sb) {secret $x_B$\\$y_B = a^{x_B} \bmod q$};
+    \draw[kdmsg] (1.6,-1.0) -- node[kdlab, above] {$y_A$} (8.4,-1.0);
+    \draw[kdmsg] (8.4,-1.6) -- node[kdlab, below] {$y_B$} (1.6,-1.6);
+    \node[font=\footnotesize, align=center, below=1.0cm of sa] {$K = y_B^{\,x_A} \bmod q$};
+    \node[font=\footnotesize, align=center, below=1.0cm of sb] {$K = y_A^{\,x_B} \bmod q$};
+    \node[font=\footnotesize\itshape, text=themegray] at (5,-2.6) {the attacker sees $q, a, y_A, y_B$, not $x_A, x_B, K$};
+\end{tikzpicture}
+\caption{Diffie--Hellman key exchange.}
+\label{fig:dh}
+\end{figure}
+
+\begin{example}[Diffie--Hellman with small numbers, from the slides]
+\label{ex:dh}
+Alice and Bob agree on $q = 353$ and $a = 3$ (3 is a primitive root modulo 353).
+\begin{itemize}
+    \item Secrets: $x_A = 97$, $x_B = 233$.
+    \item Public values: $y_A = 3^{97} \bmod 353 = 40$, $y_B = 3^{233} \bmod 353 = 248$.
+    \item Alice computes $K = 248^{97} \bmod 353 = 160$; Bob computes $K = 40^{233} \bmod 353 = 160$.
+\end{itemize}
+An eavesdropper sees 353, 3, 40 and 248. To get the key it must find $x_A$ with $3^{x_A} \equiv 40$ (or $x_B$): trivial by trying all exponents here, infeasible when $q$ has 2048 bits.
+\end{example}
+
+\begin{remark}[Why a primitive root]
+If $a$ is not a primitive root, its powers cycle through only a subset of the values, and the key is confined to that subset. For instance $2^k \bmod 23$ takes only 11 of the 22 possible values, while $5^k \bmod 23$ takes all of them. A smaller set of possible keys is easier to search; in real deployments the parameters are standardised groups chosen to avoid such small subgroups.
+\end{remark}
+
+The security of DH rests on the discrete logarithm: an attacker who could compute $x_A$ from $y_A$ would compute $K$ as Alice does. (Strictly, what is needed is the \emph{Diffie--Hellman problem}, computing $a^{x_A x_B}$ from $a^{x_A}$ and $a^{x_B}$, which is believed to be as hard.) Like factoring, the discrete logarithm has no proven lower bound, and \textbf{Shor's algorithm} solves it on a large quantum computer (\cref{sec:asymmetric}), so DH is not quantum-safe either.
+
+\paragraph{Static or ephemeral keys.} The slides note two ways of using DH: users can create a new key pair $(x, y)$ for every communication, or publish a long-term $y$ in a directory for others to use. With long-term values, Alice and Bob get the \emph{same} key every time they talk, unless one of them changes key pair.
+
+\begin{definition}[Forward secrecy]
+A key exchange has \textbf{forward secrecy} (or perfect forward secrecy) if the compromise of long-term keys does not compromise past session keys.
+\end{definition}
+
+\emph{Ephemeral} DH, with fresh secrets for every session that are erased afterwards, gives forward secrecy: an attacker who records today's traffic and steals a server's long-term key next year still cannot recompute old session keys, because the secrets $x_A, x_B$ no longer exist. Transporting a session key encrypted with a long-term RSA key (as in older TLS versions) does not: the stolen private key decrypts every recorded session. This is why TLS~1.3 allows only ephemeral (EC)DH, and it is the property missing in WPA-Personal (\cref{tab:wifi}).
+
+\paragraph{DH in practice.} Today DH is mostly used on elliptic curves (ECDH), typically X25519, with 32-byte keys. The raw shared secret is not used directly as a key: it goes through a key derivation function such as HKDF, which turns it into uniformly random keys of the required length.
+
+\begin{minted}{python}
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+alice_sk = X25519PrivateKey.generate()
+bob_sk = X25519PrivateKey.generate()
+
+shared_a = alice_sk.exchange(bob_sk.public_key())
+shared_b = bob_sk.exchange(alice_sk.public_key())
+print(shared_a == shared_b, len(shared_a))
+
+def session_key(shared):
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=None,
+                info=b"demo session key").derive(shared)
+
+print(session_key(shared_a) == session_key(shared_b))
+\end{minted}
+
+Both lines print \texttt{True} (the shared secret is 32 bytes). Because of the quantum threat, major browsers and TLS servers already negotiate a \emph{hybrid} key exchange that combines X25519 with the post-quantum ML-KEM-768 (\cref{sec:asymmetric}): the session key stays safe as long as either of the two is unbroken.
+
+\subsection{The man-in-the-middle attack}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[kdparty] (A) at (0,0) {Alice};
+    \node[kdevil] (D) at (6,0) {Darth};
+    \node[kdparty] (B) at (12,0) {Bob};
+    \draw[kdmsg] (A.north east) to[bend left=18] node[kdlab, above] {$y_A$ (intercepted)} (D.north west);
+    \draw[kdmsg] (D.south west) to[bend left=18] node[kdlab, below] {$y_D$, pretending to be Bob} (A.south east);
+    \draw[kdmsg] (D.north east) to[bend left=18] node[kdlab, above] {$y_D$, pretending to be Alice} (B.north west);
+    \draw[kdmsg] (B.south west) to[bend left=18] node[kdlab, below] {$y_B$ (intercepted)} (D.south east);
+    \node[font=\footnotesize, align=center] at (3,-1.75) {$K_1 = y_D^{\,x_A} = y_A^{\,x_D}$};
+    \node[font=\footnotesize, align=center] at (9,-1.75) {$K_2 = y_D^{\,x_B} = y_B^{\,x_D}$};
+\end{tikzpicture}
+\caption{Man in the middle on Diffie--Hellman: Darth shares $K_1$ with Alice and $K_2$ with Bob.}
+\label{fig:dh-mitm}
+\end{figure}
+
+Diffie--Hellman as described resists eavesdropping, but not an active attacker who can intercept and replace messages (\cref{fig:dh-mitm}). Darth picks his own secret $x_D$ and computes $y_D = a^{x_D} \bmod q$.
+\begin{enumerate}
+    \item He intercepts $y_A$ and sends $y_D$ to Bob in Alice's name; he intercepts $y_B$ and sends $y_D$ to Alice in Bob's name.
+    \item Alice computes $K_1 = y_D^{\,x_A}$, believing it is shared with Bob; Darth computes the same $K_1 = y_A^{\,x_D}$. Bob computes $K_2 = y_D^{\,x_B}$, and Darth the same $K_2 = y_B^{\,x_D}$.
+    \item From now on, Darth decrypts each message from Alice with $K_1$, reads or modifies it, re-encrypts it with $K_2$, and forwards it to Bob, and vice versa. Neither party notices anything.
+\end{enumerate}
+
+\begin{example}[The attack on the slides' numbers]
+With $q = 353$, $a = 3$, $x_A = 97$, $x_B = 233$ (\cref{ex:dh}), Darth chooses $x_D = 59$, so $y_D = 3^{59} \bmod 353 = 239$. Alice computes $239^{97} \bmod 353 = 278$, Darth computes $40^{59} \bmod 353 = 278$: that is $K_1$. Bob computes $239^{233} \bmod 353 = 142$, Darth computes $248^{59} \bmod 353 = 142$: that is $K_2$. Alice and Bob end up with different keys (278 and 142) and both are known to Darth.
+\end{example}
+
+\begin{remark}[The common problem: authentication]
+Merkle's scheme and Diffie--Hellman fail in the same way. The mathematics is sound; the attack works only because \textbf{nothing proves who sent the public value}. The same holds whether keys are generated fresh for each communication or published in a directory, if access to the directory is not authenticated. The fix is to authenticate the public values: Alice and Bob sign their DH values with long-term signature keys, and verify each other's signature with a public key they trust. That moves the problem to distributing \emph{public} keys reliably, which is the job of a trusted authority and, ultimately, of certificates.
+\end{remark}
+
+\subsection{Distributing public keys}
+
+Public keys are not secret, but they must be \emph{authentic}: using a forged public key is exactly the man-in-the-middle attack above. Virtually all proposed techniques fall into four schemes.
+
+\paragraph{Public announcement.} Any participant sends its public key to the others or broadcasts it to the community (appended to e-mails, posted on a website or a mailing list). Convenient, but anyone can forge such an announcement: a user can pretend to be $A$ and publish a key in $A$'s name. Until $A$ notices and warns everybody, the forger reads all messages encrypted for $A$ and can sign in $A$'s name.
+
+\paragraph{Publicly available directory.} A trusted authority maintains a directory with a $\{\text{name}, \text{public key}\}$ entry for each participant.
+\begin{enumerate}
+    \item Each participant registers its public key \emph{in person} or through some secure, authenticated communication.
+    \item A participant can replace its key at any time, e.g.\ because it has been used for long or the private key may be compromised.
+    \item Participants can consult the directory electronically.
+\end{enumerate}
+This is more secure than announcements, but the directory becomes a target: an attacker who compromises it (or the authority's keys), or who tampers with the unauthenticated answers it sends, can hand out fake keys.
+
+\paragraph{Public-key authority.} Beyond the slides' detail: a stricter variant in which the authority is online and answers every request for a public key with a reply \emph{signed with its own private key}, including the original request and a timestamp, so that the answer cannot be forged or replayed. Every user only needs to know the authority's public key. The drawback is that the authority must be contacted for every new correspondent: it is a performance bottleneck and a single point of failure.
+
+\paragraph{Public-key certificates.} The authority signs, once, a document that binds a name to a public key (a \emph{certificate}). Participants exchange certificates directly and verify them offline with the authority's public key, with no need to contact the authority each time. Certificates are the subject of a later lecture.
+
+\begin{table}[H]
+\centering
+\caption{Schemes for distributing public keys.}
+\label{tab:pk-distribution}
+\begin{tabularx}{\textwidth}{@{}l X X@{}}
+\toprule
+Scheme & How the key is obtained & Weakness \\
+\midrule
+Public announcement & Directly from its claimed owner & Anyone can forge an announcement \\
+Public directory & From a directory kept by an authority & The directory and access to it must be protected \\
+Public-key authority & On request, in a reply signed by the authority & Authority online for every request: bottleneck \\
+Certificates & From anyone, signed once by the authority & Trust in the authority; revocation (later lecture) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{summary}
+\begin{itemize}
+    \item Two parties obtain a shared key by physical delivery, by encrypting a new key under an old one (a leak compromises the whole chain), or through a trusted third party with encrypted links to both (a KDC).
+    \item Pairwise keys grow as $N(N-1)/2$; with a KDC each entity has one master key, and the KDC hands out short-lived session keys encrypted under the master keys.
+    \item KDC protocol: request with nonce $N_1$; reply readable only by $A$ with $K_s$, the request and $N_1$, plus a ticket for $B$; handshake with $N_2$ and $f(N_2)$. Without a timestamp in the ticket, old tickets can be replayed (Denning--Sacco); Kerberos adds timestamps.
+    \item Hierarchical KDCs (local and global) limit master-key distribution and the damage of a compromised KDC. Session keys: per connection, or per period or number of transactions.
+    \item Public-key encryption distributes symmetric keys (hybrid encryption), and Diffie--Hellman establishes one: $K = a^{x_A x_B} \bmod q$, secure as long as discrete logarithms are hard (not against quantum computers).
+    \item Ephemeral DH gives forward secrecy; TLS~1.3 uses only ephemeral (EC)DH, now often hybrid with ML-KEM.
+    \item Without authentication of the exchanged public values, both Merkle's scheme and DH fall to a man in the middle. Public keys can be announced, kept in a directory, served by an authority, or bound to names by certificates.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+A company has 5000 employees who must be able to communicate pairwise in confidence. How many keys are needed with pairwise symmetric keys, and how many master keys with a KDC? What new risk does the KDC introduce?
+\end{exercise}
+\begin{solution}
+Pairwise: $5000 \cdot 4999 / 2 = 12{,}497{,}500$ keys. With a KDC: 5000 master keys, one per employee, plus session keys generated on demand and discarded. The KDC knows every session key: whoever compromises it can read all traffic and impersonate anyone, and if it is down no new session can start. It must be protected and replicated; a hierarchy of KDCs limits the damage to one domain.
+\end{solution}
+
+\begin{exercise}
+In step 2 of the KDC protocol (\cref{fig:kdc}), the part encrypted for $A$ repeats $ID_B$ and $N_1$. Describe an attack that would work if (a) $N_1$ were missing, (b) $ID_B$ were missing.
+\end{exercise}
+\begin{solution}
+(a) Without $N_1$, $A$ cannot tell a fresh reply from an old one. An attacker who has recorded an old reply and later learned its session key (e.g.\ from a compromised machine) replays it: $A$ starts using a key the attacker already knows. (b) Without $ID_B$, the attacker can change the request in step 1 from \enquote{$A$ wants to talk to $B$} to \enquote{$A$ wants to talk to $D$}. The KDC then issues a ticket for $D$, the attacker, who intercepts step 3 and reads $K_s$ from it. Seeing $ID_B$ in the encrypted reply, $A$ detects the substitution.
+\end{solution}
+
+\begin{exercise}
+Alice and Bob use Diffie--Hellman with $q = 23$ and $a = 5$, with secrets $x_A = 6$ and $x_B = 15$. (a) Compute the public values and the shared key. (b) Darth performs a man-in-the-middle attack with $x_D = 3$. Which keys do Alice and Bob end up with, and how does Darth compute them?
+\end{exercise}
+\begin{solution}
+(a) $y_A = 5^6 \bmod 23 = 8$, $y_B = 5^{15} \bmod 23 = 19$. Alice: $19^6 \bmod 23 = 2$; Bob: $8^{15} \bmod 23 = 2$. The shared key is 2.
+(b) $y_D = 5^3 \bmod 23 = 10$, sent to both. Alice computes $10^6 \bmod 23 = 6$, and Darth gets the same value as $y_A^{x_D} = 8^3 \bmod 23 = 6$. Bob computes $10^{15} \bmod 23 = 5$, and Darth gets it as $y_B^{x_D} = 19^3 \bmod 23 = 5$. Alice uses 6, Bob uses 5, and Darth knows both, so he can decrypt, read or alter, and re-encrypt every message.
+\end{solution}
+
+\begin{exercise}
+An attacker records all the TLS traffic of a web server for a year, then steals the server's long-term private key. Which recorded sessions can be decrypted if the session keys were (a) transported encrypted with the server's RSA key, (b) established with ephemeral Diffie--Hellman signed with that RSA key?
+\end{exercise}
+\begin{solution}
+(a) All of them: each recorded session contains the session key encrypted under the server's RSA public key, and the stolen private key decrypts it. (b) None: the RSA key only \emph{signed} the DH values, to prevent a man in the middle at the time; the session keys depend on ephemeral secrets $x_A$, $x_B$ that were erased after each session and cannot be recomputed from the recorded $y_A$, $y_B$ without solving discrete logarithms. This is forward secrecy. (The stolen key does let the attacker impersonate the server \emph{in the future}, until it is revoked.)
+\end{solution}
+
+\begin{exercise}
+Explain the Denning--Sacco replay attack on the KDC protocol of \cref{fig:kdc}. What must the attacker have obtained, and how is it prevented?
+\end{exercise}
+\begin{solution}
+The attacker needs a recording of an old step 3, $\Enc_{K_b}(K_s \concat ID_A)$, and the old session key $K_s$ of that run (e.g.\ leaked from a compromised client). It replays the ticket to $B$, which accepts it because the ticket contains nothing that shows its age. $B$ sends $\Enc_{K_s}(N_2)$; the attacker decrypts it with the old $K_s$ and answers $\Enc_{K_s}(N_2 + 1)$, so $B$ believes it is talking to $A$. Prevention: include a timestamp (or a nonce chosen by $B$) in the ticket and reject old tickets, and keep session keys short-lived, as Kerberos does.
+\end{solution}
+
+\begin{exercise}
+Extend the toy KDC to two domains, as in the cross-realm exercise of the lab slides: Alice is registered with KDC1 (key $K_{A,1}$), Bob with KDC2 (key $K_{B,2}$), and the two KDCs share $K_{1,2}$. Describe the messages, saying who can read each one.
+\end{exercise}
+\begin{solution}
+(1) Alice asks KDC1 for a session key $R$ to talk to Bob. (2) KDC1 replies with $\Enc_{K_{A,1}}(R \concat \Enc_{K_{1,2}}(ID_A \concat R))$: only Alice can open the outer layer, and only KDC2 can open the inner one. (3) Alice keeps $R$ and sends the inner part to Bob, who cannot read it and forwards it to KDC2. (4) KDC2 decrypts it with $K_{1,2}$ and re-encrypts the content for Bob: $\Enc_{K_{B,2}}(ID_A \concat R)$. (5) Bob reads $R$ and the identity of the requester, and the two talk under $R$. In code: a second dictionary for KDC2's database, a key shared by the two KDCs, and one more decrypt/encrypt step at KDC2. Each domain only distributes master keys to its own users, which is the point of hierarchical key control.
+\end{solution}

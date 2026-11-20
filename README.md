@@ -35,9 +35,11 @@ cybersecurity-notes/
 │   ├── 01_fundamentals_security_cryptography.tex   # chapter wrapper (subfile)
 │   ├── 01_fundamentals/     # one file per topic, \input by the wrapper
 │   └── 02_... .tex          # other modules (split into a folder once they grow)
-├── styles/                  # shared LaTeX packages (notes.sty loads the rest)
+├── styles/                  # shared LaTeX packages (coursenotes.sty loads the rest)
 ├── figures/                 # images (diagrams are drawn inline with TikZ)
 ├── bibliography/references.bib
+├── scripts/check-build.sh   # log checks behind make check
+├── latexmkrc                # build settings shared by make, latexmk and editors
 └── Makefile
 ```
 
@@ -64,6 +66,7 @@ Write accented characters directly in UTF-8 (`à`, not `\`a`). The pre-commit ho
 
 ```bash
 make all                 # full build -> out/main.pdf
+make check               # full build, then fail on errors, warnings, bad boxes or biber warnings
 make chapter name=01     # single chapter -> out/chapters/
 make watch               # continuous rebuild
 make clean               # remove temp files (keep PDFs)
@@ -71,7 +74,19 @@ make distclean           # remove out/
 make install-hooks       # enable the pre-commit hook
 ```
 
-Requires TeX Live 2026 (with `biber`) and `latexminted` (or Python Pygments) for `minted`.
+Requires TeX Live 2026 (with `biber`) and `latexminted` (or Python Pygments) for `minted`. Build settings live in `latexmkrc`, so running `latexmk` from the repository root (or an editor that uses latexmk) gives the same result as `make all`. No `-shell-escape` is needed: minted works with TeX Live's restricted shell escape.
+
+### Troubleshooting
+
+- **`biber: extracting arm64 binary with lipo failed`**, or latexmk reporting `biber ... gave an error in previous invocation`: TeX Live's universal `biber` calls `lipo -extract_family`, which Xcode 27 no longer supports. Replace it with the arm64 slice (redo after a `tlmgr update` that reinstalls biber):
+
+  ```bash
+  TL=/usr/local/texlive/2026/bin/universal-darwin
+  sudo cp $TL/biber $TL/biber.universal
+  sudo lipo $TL/biber.universal -thin arm64 -output $TL/biber
+  ```
+
+- **latexmk says "Nothing to do" but still reports an old error**: it remembers failures until a source file changes. Delete `out/main.fdb_latexmk` and build again.
 
 ## AI use
 
@@ -82,5 +97,5 @@ Large language models (LLMs) were used in preparing these notes.
 [![CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 - **Notes** (text, figures, exercises): [CC BY-NC-SA 4.0](LICENSE). You may share and adapt them with credit, not commercially, and adapted versions must use the same license.
-- **LaTeX template and build files** (`styles/`, `Makefile`, `.githooks/`): [MIT](LICENSE-CODE).
+- **LaTeX template and build files** (`styles/`, `Makefile`, `latexmkrc`, `scripts/`, `.githooks/`): [MIT](LICENSE-CODE).
 - Course slides, recordings and handouts belong to their authors and the University of Bologna; they are not in this repository and not covered by these licenses.

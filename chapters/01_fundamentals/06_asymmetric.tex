@@ -255,13 +255,18 @@ For the key of \cref{ex:rsa-small}, factoring $n = 3233$ takes a laptop a fracti
 This is the point the lecturer stressed most. A good symmetric cipher has no structure linking anything public to the key: the only generic attack is to brute force or guess the key, so 128 bits are plenty. In public-key cryptography the private key is \emph{mathematically connected} to the public key, so there are attacks much better than brute force (factoring for RSA). That is why asymmetric keys are an order of magnitude longer (2048--3072 bits for RSA vs 128--256 bits for AES), and why a better factoring algorithm, or a quantum computer, would break every RSA key at once.
 \end{remark}
 
-\paragraph{The factoring problem.} Nobody has proved that factoring is hard: there are no theorems or lower bounds, only empirical evidence that the best known algorithms (the general number field sieve) are super-polynomial. There is therefore no guarantee that what is secure today will still be secure tomorrow. Progress is tracked with the \emph{RSA challenge numbers}: the record is \textbf{RSA-250} (250 decimal digits, 829 bits), factored in 2020 with the number field sieve on classical computers. A 2048-bit modulus is far beyond reach.
+\paragraph{The factoring problem.} Nobody has proved that factoring is hard: there are no theorems or lower bounds, only empirical evidence that the best known algorithms (the general number field sieve) are super-polynomial. There is therefore no guarantee that what is secure today will still be secure tomorrow. Progress is tracked with the \emph{RSA challenge numbers}. The slides give the record as RSA-250 (250 decimal digits, 829 bits, 2020), but it moved twice in September 2026:
+\begin{itemize}
+    \item \textbf{RSA-260} (260 digits, 862 bits), factored on 3 September 2026 \cite{lu2026rsa260}. Cognition's Devin coding agent wrote a GPU version of the lattice-sieving step of CADO-NFS, an open-source implementation of the number field sieve; the run took about 13.5 GPU-years.
+    \item \textbf{RSA-896} (270 digits, 896 bits), factored on 19 September 2026 \cite{weis2026rsa896}, with a similar GPU port of CADO-NFS written with Claude, running for ten days on up to 2048 GPUs (about 30 GPU-years).
+\end{itemize}
+Both used the classical algorithm on ordinary (if very large) hardware: no quantum computer and no new mathematics, only much better engineering, produced quickly with AI agents. A 2048-bit modulus is still far beyond reach, but the jump is a reminder that \enquote{secure today} is an empirical statement, and one more reason to prefer 3072-bit keys for long-term use and to plan the move to post-quantum algorithms.
 
-\begin{remark}[Corrections to what was said in class]
+\begin{remark}[Precisions on what was said in class]
 \leavevmode
 \begin{itemize}
     \item The lecturer said that the number in \enquote{RSA-260} is the size of the modulus in bits. It depends on the challenge: RSA-100 to RSA-260 count \emph{decimal digits} (RSA-260 has 862 bits), while the later challenge numbers (RSA-576, RSA-768, RSA-896, RSA-2048, \dots) count bits.
-    \item He also mentioned that RSA-260 and RSA-896 had \enquote{recently} been factored using AI agents. As far as can be verified, neither has been factored publicly, with or without AI: the public record remains RSA-250 (829 bits, 2020), as the slides say. Treat AI-assisted cryptanalysis as an open concern, not as an established result.
+    \item He also mentioned that RSA-260 and RSA-896 had recently been factored using AI agents. That is correct, and more recent than the slides (see above). Note what the agents did: they wrote faster software for a known algorithm, they did not discover a new way to factor.
     \item He said that \enquote{right now we use RSA-1024 and will move to 2048}. In practice 1024-bit RSA has been deprecated for over a decade; 2048 bits is the current \emph{minimum} (as in the slides), with 3072 bits recommended for long-term security.
 \end{itemize}
 \end{remark}
@@ -371,7 +376,7 @@ In class Bitcoin was described as RSA-based. It is not: Bitcoin keys and signatu
 \subsection{The quantum threat and post-quantum cryptography}
 
 \begin{itemize}
-    \item On classical computers a 2048-bit RSA modulus cannot be factored; the record is 829 bits (2020).
+    \item On classical computers a 2048-bit RSA modulus cannot be factored; the record is 896 bits (September 2026; the slides still say 829 bits, 2020).
     \item \textbf{Shor's algorithm} (1994) \cite{shor1997}: a large enough quantum computer factors integers and computes discrete logarithms efficiently, which breaks \emph{both} RSA and ECC (and Diffie--Hellman).
     \item Such a computer does not exist yet, but encrypted traffic can be recorded today and decrypted once it does: \textbf{harvest now, decrypt later}. Data that must stay secret for many years is already at risk.
 \end{itemize}
@@ -401,7 +406,7 @@ The lecturer said that you need not memorise every step of the mathematics or th
     \item Public-key cryptography is built on a one-way trapdoor function. Each party has a public key (shared) and a private key (secret), mathematically linked.
     \item Encrypt with the receiver's public key: confidentiality. Sign with your own private key: authenticity and non-repudiation, which a MAC cannot give.
     \item RSA: $n = pq$, $\varphi(n) = (p-1)(q-1)$, $\gcd(e,\varphi(n))=1$, $d = e^{-1} \bmod \varphi(n)$; public $(e,n)$, private $(d,n)$; $c = m^e \bmod n$, $m = c^d \bmod n$, with $m < n$.
-    \item Security of RSA rests on factoring $n$: knowing $p$, $q$ (or $\varphi(n)$) gives $d$. Factoring has no proven lower bound; the record is 829 bits.
+    \item Security of RSA rests on factoring $n$: knowing $p$, $q$ (or $\varphi(n)$) gives $d$. Factoring has no proven lower bound; the record is 896 bits (RSA-896, 2026, with AI-written GPU code for the classical number field sieve).
     \item Large primes are found by random search with probabilistic tests (Fermat, Miller--Rabin with error $\le 4^{-k}$). Bad randomness leads to shared primes, broken by a gcd.
     \item In practice: at least 2048 bits, random padding (OAEP/PSS), hybrid encryption (RSA exchanges an AES key), sign the hash.
     \item ECC: private key $k$, public key $Q = kG$; same security with much shorter keys (256-bit ECC $\approx$ 3072-bit RSA), but nonces must never repeat.

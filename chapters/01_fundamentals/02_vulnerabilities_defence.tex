@@ -132,9 +132,9 @@ In class the slowdown was described as \enquote{half the speed}; the measured ov
 \toprule
 Standard & Key facts and weaknesses \\
 \midrule
-WEP  & Pre-shared key, RC4 stream cipher, key combined with a 24-bit IV. With enough traffic the IV repeats and the key can be recovered (design flaw). \\
+WEP  & Pre-shared key, RC4 stream cipher, key combined with a 24-bit IV. Two design flaws: with enough traffic the IV repeats, so the keystream is reused; and RC4 is weak when the IV is simply prepended to the key, so the key itself can be recovered from enough captured packets (\cref{sec:symmetric}). \\
 WPA  & Interim fix: TKIP replaces the IV scheme. Personal mode (PSK) has no forward secrecy: anyone knowing the key can decrypt all traffic. Enterprise mode authenticates each user. \\
-WPA2 & Long considered secure. KRACK (2017): key reinstallation attacks (some clients install an all-zero key). Short PSK when WPS is used. \\
+WPA2 & Long considered secure. KRACK (2017): key reinstallation attacks (some clients install an all-zero key). With WPS enabled, the 8-digit setup PIN is checked in two halves, so about 11{,}000 guesses reveal it and, with it, the PSK. \\
 WPA3 & Robust ciphers; PSK replaced by SAE (Dragonfly handshake). Dragonblood: downgrade to WPA2 via MITM, and implementation flaws enabling password partitioning. \\
 \bottomrule
 \end{tabularx}
@@ -172,9 +172,9 @@ Once physical security is ensured, we must guarantee that the software is exactl
     }
     \draw[|-|] (2.5,-0.9) -- node[below, font=\footnotesize] {zero-day attack} (6,-0.9);
     \draw[|-|] (6,-0.9) -- node[below, font=\footnotesize] {follow-on attacks} (10,-0.9);
-    \draw[|-|] (2.5,-1.6) -- node[below, font=\footnotesize] {window of exposure} (10,-1.6);
+    \draw[|-|] (0,-1.6) -- node[below, font=\footnotesize] {window of exposure} (10,-1.6);
 \end{tikzpicture}
-\caption{Life cycle of a software vulnerability \cite{bilge2012}.}
+\caption{Life cycle of a software vulnerability \cite{bilge2012}. The events do not always occur in this order: in particular the vendor may learn of the flaw ($t_d$) before or after the first exploit appears ($t_e$).}
 \label{fig:vuln-lifecycle}
 \end{figure}
 
@@ -186,9 +186,13 @@ A \textbf{zero-day vulnerability} is unknown to those who should be interested i
 
 A researcher who finds a vulnerability reports it; an attacker who finds it keeps it secret and builds an exploit, which is why zero-days are so valuable. AI agents that can scan enormous code bases for vulnerabilities make this race faster on both sides.
 
-\begin{definition}[Window of opportunity / exposure]
-The time between the first active exploit ($t_e$) and the moment the patch has been released \emph{and applied} ($t_a$). It grew from 54 days on average in 2005 to almost 12 months in 2014.
+\begin{definition}[Window of exposure, window of opportunity]
+The \textbf{window of exposure} (\cref{fig:vuln-lifecycle}) runs from the introduction of the vulnerability ($t_v$) to the completion of patch deployment ($t_a$): the whole time the system is vulnerable. The \textbf{window of opportunity} (Prandini's definition) is the part of it in which attackers can actually strike: from the first active exploit ($t_e$) to the moment the patch has been released \emph{and applied} ($t_a$). It grew from 54 days on average in 2005 to almost 12 months in 2014.
 \end{definition}
+
+\begin{remark}
+Prandini's slide calls any attack inside the window of opportunity a zero-day attack. The figure, following Bilge and Dumitraș, reserves the term for attacks before public disclosure ($t_e$ to $t_0$) and calls the later ones follow-on attacks; these notes use the latter convention.
+\end{remark}
 
 \begin{remark}
 Attacks \emph{intensify} after disclosure, because everyone learns of the vulnerability: mass scans typically start about 15 minutes after a CVE is published. Patching late is therefore very dangerous.
@@ -277,9 +281,9 @@ Phase & Date & Event \\
 \midrule
 $t_v$ & 2012--2025 & Flaws introduced in PHP 5.4.0 (session state handling, 2012), 7.3.0 (hashtable corruption on a failed allocation, 2018), and 8.5.0 (backtrace of fatal errors, 2025). They sat in the code for up to 14 years. \\
  & 2024 & Existence of the flaws theorised by the PHP Foundation, but no working exploit known. \\
-$t_e$? & 11 Aug 2026 & Researchers (Calif, OpenAI) report evidence matching the theory: a working exploit may already be in the wild. \\
-$t_d$ & Aug--Oct 2026 & Two months of careful study to build a robust fix. \\
- & 17 Oct 2026 & Attacks clearly traceable to the vulnerabilities: moving on becomes urgent. \\
+$t_d$ & 11 Aug 2026 & Researchers (Calif, OpenAI) report the flaws: from now on the PHP team knows. \\
+ & Aug--Oct 2026 & Two months of careful study to build a robust fix. \\
+$t_e$ & by 17 Oct 2026 & Attacks clearly traceable to the vulnerabilities: an exploit is in the wild before disclosure (zero-day attacks), so moving on becomes urgent. \\
 $t_0$ & 20 Oct 2026 & Advance notice, without details, of a security release for 21 October 14:00 UTC fixing two critical bugs (CVSS v4.0 9.2). Detailed CVEs and a CERT-EU advisory follow on the 21st. \\
  & 21 Oct, 11:00 & No patch yet: the University of Bologna announces that affected applications must be stopped. At 12:00 Virtuale, EOL, remote working, attendance tracking, and others go offline. \\
 $t_p$ & 21 Oct, 13:30 UTC & Fixes released for the supported branches (8.2 to 8.5). Older branches may be patched by redistributors (e.g.\ Linux distributions), or never. \\
@@ -464,7 +468,7 @@ Recover  & How do we get back to normal?         & Verified backups, restoration
     \item Attack surface = set of all attack vectors (physical, cyber, human channels).
     \item Attacks succeed through porosity (unexpected vectors) or vulnerabilities (policy or mechanism errors); an exploit takes advantage of a vulnerability. A vulnerability without a practical exploit (unreachable code, the 18th-floor window) does no harm.
     \item Physical access and hardware flaws bypass software defences, and hardware cannot be patched easily.
-    \item Zero-day attack: before public disclosure. Window of exposure: from first exploit to patch \emph{applied}. Attacks increase after disclosure.
+    \item Zero-day attack: before public disclosure. Window of exposure: from the introduction of the flaw to patch \emph{applied}; window of opportunity: from the first exploit to patch applied. Attacks increase after disclosure.
     \item CVD: confidential report, time to fix (typically up to 90 days), then coordinated publication; disclosure serves defenders and pressures vendors. Remediation removes the flaw; mitigation reduces its risk (PHP2Shell: Unibo traded availability for integrity and confidentiality).
     \item CVE = which vulnerability; CWE = what kind; CVSS = how severe.
     \item NIST CSF 2.0: Govern, Identify, Protect, Detect, Respond, Recover.
@@ -521,7 +525,7 @@ Threat: the burglar. Vulnerability: the hole in the window. Exploit: a ladder re
 Map the PHP2Shell events onto the vulnerability life cycle ($t_v$, $t_e$, $t_d$, $t_0$, $t_p$, $t_a$). Why did the University of Bologna shut down its applications, and which security property did it sacrifice?
 \end{exercise}
 \begin{solution}
-$t_v$: 2012--2025 (flaws introduced in PHP 5.4, 7.3, 8.5). $t_e$: probably around August 2026 (researchers' report), certainly by 17 October (traceable attacks). $t_d$: August--October (the PHP team studies the fix). $t_0$: 20--21 October (advance notice and CVEs). $t_p$: 21 October 13:30 UTC. $t_a$: 21--22 October for Unibo; never for branches that receive no patch. Between $t_0$ and $t_p$ the vulnerability (unauthenticated RCE, CVSS 9.2) was public, follow-on attacks were expected, and no patch or signature existed, so the only mitigation was making the services unreachable: Unibo sacrificed availability to protect integrity and confidentiality.
+$t_v$: 2012--2025 (flaws introduced in PHP 5.4, 7.3, 8.5). $t_d$: 11 August (researchers report to the PHP team, which then studies the fix). $t_e$: by 17 October at the latest (traceable attacks); here the vendor knew before the attacks started, the opposite order to the figure. $t_0$: 20--21 October (advance notice and CVEs). $t_p$: 21 October 13:30 UTC. $t_a$: 21--22 October for Unibo; never for branches that receive no patch. Between $t_0$ and $t_p$ the vulnerability (unauthenticated RCE, CVSS 9.2) was public, follow-on attacks were expected, and no patch or signature existed, so the only mitigation was making the services unreachable: Unibo sacrificed availability to protect integrity and confidentiality.
 \end{solution}
 
 \begin{exercise}

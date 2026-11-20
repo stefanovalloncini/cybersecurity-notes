@@ -3,9 +3,9 @@ MIT License
 Copyright (c) 2026 Stefano Valloncini
 
 Applies to the LaTeX template and build files of this repository: the
-styles/ folder, Makefile and .githooks/. The notes themselves (chapters/,
-frontmatter/, config/, figures/, bibliography/) are licensed under
-CC BY-NC-SA 4.0; see LICENSE.
+styles/ and scripts/ folders, Makefile, latexmkrc and .githooks/. The
+notes themselves (chapters/, frontmatter/, config/, figures/,
+bibliography/) are licensed under CC BY-NC-SA 4.0; see LICENSE.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

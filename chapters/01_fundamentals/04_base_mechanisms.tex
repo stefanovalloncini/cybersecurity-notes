@@ -33,8 +33,17 @@ The lecture showed two 100-bit strings:
 000001100001           & 010101010101
 \end{tabular}
 \end{center}
-Most people pick the right-hand one: the left one has suspicious long runs (\texttt{11111111}, \texttt{000000}) that \enquote{don't look random}. Yet both have 50 ones and 50 zeros, and only the \emph{left} one has the four pairs $00$, $01$, $10$, $11$ in roughly equal numbers (about 18--19 each). The right one has very few $00$ and $11$ ($\approx 10$) and many $01$ and $10$ ($\approx 37$): it alternates too often. Knowing that, an attacker who sees a $0$ can bet that a $1$ follows with better than even odds. The \textbf{left} string is the random one.
+Most people pick the right-hand one: the left one has suspicious long runs (\texttt{11111111}, \texttt{000000}) that \enquote{don't look random}. Both have 50 ones and 50 zeros, so single bits cannot tell them apart; pairs can. In a random string each bit differs from the previous one with probability $1/2$, so among the 99 adjacent pairs we expect about 25 each of $00$, $01$, $10$, $11$, i.e.\ about 50 changes of value, give or take 5.
+\begin{itemize}
+    \item The right string changes value 74 times (37 $01$, 37 $10$, only 13 $00$ and 12 $11$), almost five standard deviations too many: a deviation that practically never happens by chance. It alternates too often, so an attacker who sees a $0$ can bet that a $1$ follows and win about three times out of four.
+    \item The left string changes value 37 times (19 $01$, 18 $10$, 31 $00$, 31 $11$): somewhat clumpy, 2.6 standard deviations below the mean, which happens to about one random string in a hundred. Unusual, but plausible.
+\end{itemize}
+The \textbf{left} string is the random one.
 \end{example}
+
+\begin{remark}[The slide's histogram]
+The slide's bar chart gives 18--19 occurrences of every pair for the left string. Those numbers count \emph{non-overlapping} occurrences (what Python's \mintinline{python}{str.count} returns), which undercounts runs: \texttt{0000} contains three overlapping $00$ pairs, but is counted as two. $01$ and $10$ cannot overlap themselves, so their counts are the same either way. The conclusion does not change, but the left string's pairs are not \enquote{all about equal}: the honest test is the number of changes of value (a \emph{runs test}).
+\end{remark}
 
 \paragraph{Randomness vs.\ perceived randomness.} Humans expect random sequences to have \emph{few long runs and no clusters}, but true randomness has both. Believing that after many heads a tail is \enquote{due} is the \emph{gambler's fallacy}: in a truly random process each outcome is independent of the past. When Apple's iPod/iTunes shuffle was truly random, users complained that songs by the same artist came up in a row; Apple added a \enquote{Smart Shuffle} that controls grouping (attributed to Steve Jobs: \enquote{we're making it less random to make it feel more random}). Music services do the same: a song just played is down-weighted. That is a forced distribution, and therefore predictable: if a generator \enquote{balances} its output, then after many ones you \emph{know} a zero is more likely.
 
@@ -323,6 +332,8 @@ where \texttt{hash} $= \mathrm{MD5}(\texttt{SECRET} \concat \texttt{10203040} \c
 \small $m \concat \mathit{pad} \concat \texttt{\&amount=1000}$
 \end{center}
 and if the server takes the \emph{last} value of a repeated parameter, it executes a transfer of 1000 with a valid hash.
+
+For this to work the server must hash the parameter string as it arrives; the padding contains non-printable bytes (\texttt{0x80}, zeros, the length), which travel URL-encoded (\texttt{\%80\%00\dots}). This is not hypothetical: in 2009 Thai Duong and Juliano Rizzo forged signed requests to the Flickr API in exactly this way, because its signature was MD5 of a secret followed by the request parameters.
 \end{example}
 
 \paragraph{Countermeasures.}
@@ -333,7 +344,7 @@ and if the server takes the \emph{last} value of a repeated parameter, it execut
 \end{itemize}
 
 \begin{remark}[Key at the end is not the real fix]
-$H(m \concat k)$ does stop length extension, but it is still not a good MAC: if the attacker can find a collision $H(m_1) = H(m_2)$ \emph{offline}, without the key (cheap for MD5 or SHA-1), then by the Merkle--Damgård structure $H(m_1 \concat k) = H(m_2 \concat k)$, so a tag for $m_1$ is also a valid tag for $m_2$. The security of the MAC would drop to the collision resistance of the hash. Use HMAC.
+$H(m \concat k)$ does stop length extension, but it is still not a good MAC: if the attacker can find a collision $H(m_1) = H(m_2)$ \emph{offline}, without the key (cheap for MD5 or SHA-1, whose practical collision attacks produce two messages of the same length), then by the Merkle--Damgård structure the chain is in the same state after $m_1$ and after $m_2$, and appending the same $k$ keeps it so: $H(m_1 \concat k) = H(m_2 \concat k)$, so a tag for $m_1$ is also a valid tag for $m_2$. The security of the MAC would drop to the collision resistance of the hash. Use HMAC.
 \end{remark}
 
 \begin{definition}[HMAC \cite{rfc2104}]

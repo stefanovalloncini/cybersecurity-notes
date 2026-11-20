@@ -168,7 +168,7 @@ Sending a message over an open Wi-Fi network without encryption: the bits travel
 \begin{definition}[Symmetric and asymmetric cryptography]
 \leavevmode
 \begin{itemize}
-    \item \textbf{Symmetric} (secret-key, private-key) cryptography: the \emph{same} key is used to encrypt and to decrypt, so it must be shared by sender and receiver. Encryption and decryption are often the same (or very similar) function, differing only in the order of the inputs.
+    \item \textbf{Symmetric} (secret-key, private-key) cryptography: the \emph{same} key is used to encrypt and to decrypt, so it must be shared by sender and receiver. Encryption and decryption are often the same (or very similar) function: XOR-based stream ciphers apply the identical operation in both directions, and Feistel ciphers such as DES decrypt with the same circuit, taking the round keys in reverse order (\cref{sec:symmetric}).
     \item \textbf{Asymmetric} (public-key) cryptography: \emph{different} keys are used to encrypt and to decrypt, and the encryption and decryption functions are different.
 \end{itemize}
 \end{definition}
@@ -219,7 +219,7 @@ Can we build a \enquote{perfect} cipher, i.e.\ one whose confidentiality is alwa
 Shannon (1949) proved that perfect secrecy is achievable, but only if the key is \textbf{truly random}, \textbf{at least as long as the message}, and \textbf{never reused}: the one-time pad (\cref{sec:symmetric}). With a key shorter than the message, perfect secrecy is impossible, because a brute-force adversary can try keys until the text makes sense.
 
 \begin{remark}[What \enquote{perfect} means]
-The lecturer stressed this point: perfect secrecy does \emph{not} mean that brute force is impossible. You can still try every key, but with a one-time pad every plaintext of the right length comes out of some key, so all candidates are equally plausible and the ciphertext reveals nothing about which one was sent. The one-time pad is impractical: the key must be exchanged securely, it must be as long as all the traffic, and it must be truly random rather than pseudo-random, which ordinary computers cannot easily produce.
+The lecturer stressed this point: perfect secrecy does \emph{not} mean that brute force is impossible. You can still try every key, but with a one-time pad every plaintext of the right length comes out of some key, so all candidates are equally plausible and the ciphertext reveals nothing about which one was sent. The one-time pad is impractical: the key must be exchanged securely, it must be as long as all the traffic, and it must be truly random rather than pseudo-random, which needs a physical entropy source and is slow to produce in large quantities (\cref{sec:base-mechanisms}).
 \end{remark}
 
 In practice we use ciphers with \textbf{computational secrecy}. If breaking a cipher takes a billion years of computation, or all the computing power in the world, it is \enquote{breakable} in theory but \emph{secure enough}. We want something usable, not something unbreakable.
@@ -316,7 +316,7 @@ Non-repudiation needs asymmetric cryptography. With a shared symmetric key (e.g.
 \end{itemize}
 
 \begin{remark}[AI and cryptanalysis]
-The lecturer also noted that AI is being applied to the mathematical problems behind public-key cryptography (e.g.\ factoring). To be precise, what would break RSA is an efficient \emph{factoring} algorithm, not a way of generating primes: generating large primes is already easy, and is exactly how RSA keys are made. A proof that P\,=\,NP with a practical algorithm would also break it. No such result exists today.
+The lecturer also noted that AI is being applied to the mathematical problems behind public-key cryptography (e.g.\ factoring). To be precise, what would break RSA is an efficient \emph{factoring} algorithm, not a way of generating primes: generating large primes is already easy, and is exactly how RSA keys are made. A proof that P\,=\,NP with a practical algorithm would also break it. No such result exists today. What AI has already done is speed up the \emph{engineering}: in September 2026 two RSA challenge numbers (RSA-260 and RSA-896) were factored with GPU versions of the classical number field sieve written with the help of AI coding agents (\cref{sec:asymmetric}). That moves the record, but it is not a new algorithm, and 2048-bit keys remain far out of reach.
 \end{remark}
 
 \begin{summary}
