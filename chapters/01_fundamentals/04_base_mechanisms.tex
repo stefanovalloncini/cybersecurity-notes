@@ -115,7 +115,7 @@ Dual\_EC\_DRBG & A NIST-standardised generator with a suspected (NSA) backdoor: 
 \end{table}
 
 \begin{example}[A private key equal to 4 (eMudhra, October 2026)]
-eMudhra, a certification authority that issues certificates for websites, was found to have 8 private keys that were tiny numbers: 4, 56, 66, 115, 155, 156, 230, 237. A key for the P-384 elliptic curve should be a random number of about 384 bits, i.e.\ one of $\approx 2^{384}$ values. Here all keys were below $2^8 = 256$, so anyone could recover them by trying the 256 smallest values. (A joke at the time: they read \enquote{384} as the maximum \emph{value} of the key rather than its \emph{length} in bits.) The signature algorithm was fine; the key generation was not. The company is now distrusted. The full case is discussed in the lecture on certificates.
+eMudhra, a certification authority that issues certificates for websites, was found to have 8 private keys that were tiny numbers: 4, 56, 66, 115, 155, 156, 230, 237. A key for the P-384 elliptic curve should be a random number of about 384 bits, i.e.\ one of $\approx 2^{384}$ values. Here all keys were below $2^8 = 256$, so anyone could recover them by trying the 256 smallest values. (A joke at the time: they read \enquote{384} as the maximum \emph{value} of the key rather than its \emph{length} in bits.) The signature algorithm was fine; the key generation was not. The company is now distrusted. The full case is in \cref{sec:pki}.
 \end{example}
 
 \begin{remark}[A small key is not the problem per se]
@@ -387,7 +387,7 @@ A binary tree in which each \emph{leaf} is the hash of a data block and each int
 \label{fig:merkle-tree}
 \end{figure}
 
-The advantage over hashing everything together is efficient \emph{proofs of inclusion}: to prove that $D_3$ belongs to the set with root $h_{1234}$ you only need $h_4$ and $h_{12}$ (one hash per level, $\log_2$ of the number of blocks), not the other data. Merkle trees are used in Git, in file-sharing and backup systems, in Certificate Transparency logs, and in blockchains. A \textbf{hash chain} links records by including in each one the hash of the previous one, so altering a past record breaks every link after it. Hash chains and Merkle trees are the building blocks of blockchains (covered in the Blockchain lecture).
+The advantage over hashing everything together is efficient \emph{proofs of inclusion}: to prove that $D_3$ belongs to the set with root $h_{1234}$ you only need $h_4$ and $h_{12}$ (one hash per level, $\log_2$ of the number of blocks), not the other data. Merkle trees are used in Git, in file-sharing and backup systems, in Certificate Transparency logs, and in blockchains. A \textbf{hash chain} links records by including in each one the hash of the previous one, so altering a past record breaks every link after it. Hash chains and Merkle trees are the building blocks of blockchains (\cref{sec:blockchain}).
 
 \paragraph{Hashes and quantum computers.} Quantum computers weaken hash functions only slightly. Grover's algorithm finds a preimage in about $2^{n/2}$ quantum steps instead of $2^n$, so a 256-bit hash still gives 128-bit security against preimages; quantum collision search offers no practical gain over the classical $2^{n/2}$. Hence the rule: \textbf{use outputs of at least 256 bits}. Unlike RSA and elliptic curves (\cref{sec:asymmetric}), hash functions do not need to be replaced.
 

@@ -1,0 +1,184 @@
+% Source: Romandini, 12_Kerberos slides (written from the slides only).
+\section{Kerberos}
+\label{sec:kerberos}
+
+Kerberos is an authentication service developed at MIT as part of Project Athena in the 1980s. It assumes an open distributed environment: users at workstations want to access services on servers spread across the network, and a workstation \emph{cannot be trusted} to identify its users correctly to network services. Kerberos is the KDC of \cref{sec:key-distribution} turned into a complete system: it uses only symmetric cryptography, a trusted third party, and timestamps, exactly the fix that Denning and Sacco proposed for Needham--Schroeder.
+
+\tikzset{
+    kbparty/.style={draw, rounded corners, fill=themeblue!10, minimum width=1.6cm, minimum height=0.7cm, font=\small\bfseries},
+    kbmsg/.style={-{Stealth}, thick},
+    kblab/.style={font=\footnotesize, fill=white, inner sep=1.5pt},
+}
+
+\paragraph{Threats.}
+\begin{itemize}
+    \item A user gains access to a workstation and pretends to be another user operating from it.
+    \item A user alters the network address of a workstation so that its requests appear to come from another one.
+    \item A user eavesdrops on exchanges and replays them to gain access to a server or disrupt operations.
+\end{itemize}
+
+\paragraph{Requirements.}
+\begin{itemize}
+    \item \textbf{Secure}: an eavesdropper cannot obtain what is needed to impersonate a user; Kerberos must not be the weak link.
+    \item \textbf{Reliable}: every service that relies on Kerberos becomes unavailable when Kerberos is, so it must be highly available and backed up.
+    \item \textbf{Transparent}: apart from typing a password, users should not notice that authentication is taking place.
+    \item \textbf{Scalable}: support large numbers of clients and servers.
+\end{itemize}
+
+\subsection{The components}
+
+\begin{itemize}
+    \item The \textbf{authentication server} (AS) knows the passwords of all users (in practice, keys derived from them) in a central database, and shares a secret key with each server.
+    \item A \textbf{ticket} is created once the AS accepts a user as authentic. It contains the user's ID and network address and the server's ID, and it is encrypted with the key shared by the issuer and the server: the client carries it but can neither read nor modify it.
+    \item The \textbf{ticket-granting server} (TGS) issues tickets for specific services to users who have already authenticated to the AS. Each time the user needs a new service, the client presents its \emph{ticket-granting ticket} (TGT) to the TGS and receives a \emph{service-granting ticket} for that service; it keeps each ticket and reuses it whenever it needs that service again.
+\end{itemize}
+Together, the AS and the TGS form the KDC. Splitting them means that the password is used once per logon session (to obtain the TGT) instead of once per service, and never travels on the network.
+
+\paragraph{Three design problems} that shaped the protocol:
+\begin{itemize}
+    \item \emph{Ticket lifetime}: if the TGT lasts only minutes, the user is asked for the password over and over; if it lasts hours, an opponent has more time to replay a stolen ticket.
+    \item \emph{Proof of ownership}: a service (the TGS or an application server) must be able to check that whoever presents a ticket is the user it was issued to, not someone who copied it from the network.
+    \item \emph{Mutual authentication}: servers must also authenticate themselves to users, so that a fake server cannot collect requests.
+\end{itemize}
+The answers are a \textbf{session key} inside each ticket, and an \textbf{authenticator} that proves knowledge of it.
+
+\subsection{The Kerberos version 4 dialogue}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[kbparty] (C) at (0,0)  {Client $C$};
+    \node[kbparty] (A) at (4,0)  {AS};
+    \node[kbparty] (T) at (8,0)  {TGS};
+    \node[kbparty] (V) at (12,0) {Server $V$};
+    \foreach \n/\x in {C/0, A/4, T/8, V/12} \draw[themegray!60, dashed] (\n.south) -- (\x,-7.4);
+    \draw[kbmsg] (0,-1.0) -- node[kblab, above] {(1) $ID_C \concat ID_{tgs} \concat TS_1$} (4,-1.0);
+    \draw[kbmsg] (4,-2.0) -- node[kblab, above] {(2) $\Enc_{K_c}(K_{c,tgs}, \dots, \mathit{Ticket}_{tgs})$} (0,-2.0);
+    \draw[kbmsg] (0,-3.4) -- node[kblab, above, pos=0.6] {(3) $ID_V \concat \mathit{Ticket}_{tgs} \concat \mathit{Authenticator}_C$} (8,-3.4);
+    \draw[kbmsg] (8,-4.4) -- node[kblab, above, pos=0.4] {(4) $\Enc_{K_{c,tgs}}(K_{c,v}, \dots, \mathit{Ticket}_V)$} (0,-4.4);
+    \draw[kbmsg] (0,-5.8) -- node[kblab, above, pos=0.7] {(5) $\mathit{Ticket}_V \concat \mathit{Authenticator}_C$} (12,-5.8);
+    \draw[kbmsg] (12,-6.8) -- node[kblab, above, pos=0.3] {(6) $\Enc_{K_{c,v}}(TS_5 + 1)$} (0,-6.8);
+    \node[font=\scriptsize\itshape, text=themegray, anchor=west] at (12.3,-1.5) {once per logon};
+    \node[font=\scriptsize\itshape, text=themegray, anchor=west] at (12.3,-3.9) {once per service type};
+    \node[font=\scriptsize\itshape, text=themegray, anchor=west] at (12.3,-6.3) {once per session};
+\end{tikzpicture}
+\caption{The three Kerberos exchanges: with the AS (to get a ticket-granting ticket), with the TGS (to get a service ticket), and with the server (to obtain the service).}
+\label{fig:kerberos}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Kerberos version 4 messages. $K_c$ is derived from the user's password, $K_{tgs}$ and $K_v$ are shared by the AS with the TGS and with the server $V$, $AD_C$ is the client's network address, $TS$ are timestamps.}
+\label{tab:kerberos}
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+\multicolumn{2}{@{}l}{\emph{(a) Authentication service exchange: obtain the ticket-granting ticket}} \\
+(1) $C \to AS$ & $ID_C \concat ID_{tgs} \concat TS_1$ \\
+(2) $AS \to C$ & $\Enc_{K_c}(K_{c,tgs} \concat ID_{tgs} \concat TS_2 \concat \mathit{Lifetime}_2 \concat \mathit{Ticket}_{tgs})$ \\
+ & $\mathit{Ticket}_{tgs} = \Enc_{K_{tgs}}(K_{c,tgs} \concat ID_C \concat AD_C \concat ID_{tgs} \concat TS_2 \concat \mathit{Lifetime}_2)$ \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{(b) Ticket-granting service exchange: obtain a service-granting ticket}} \\
+(3) $C \to TGS$ & $ID_V \concat \mathit{Ticket}_{tgs} \concat \mathit{Authenticator}_C$ \\
+(4) $TGS \to C$ & $\Enc_{K_{c,tgs}}(K_{c,v} \concat ID_V \concat TS_4 \concat \mathit{Ticket}_V)$ \\
+ & $\mathit{Ticket}_V = \Enc_{K_v}(K_{c,v} \concat ID_C \concat AD_C \concat ID_V \concat TS_4 \concat \mathit{Lifetime}_4)$ \\
+ & $\mathit{Authenticator}_C = \Enc_{K_{c,tgs}}(ID_C \concat AD_C \concat TS_3)$ \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{(c) Client/server authentication exchange: obtain the service}} \\
+(5) $C \to V$ & $\mathit{Ticket}_V \concat \mathit{Authenticator}_C$, with $\mathit{Authenticator}_C = \Enc_{K_{c,v}}(ID_C \concat AD_C \concat TS_5)$ \\
+(6) $V \to C$ & $\Enc_{K_{c,v}}(TS_5 + 1)$ \quad (for mutual authentication) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Step by step} (\cref{fig:kerberos,tab:kerberos}).
+\begin{enumerate}
+    \item The user logs on; the client asks the AS for a TGT, sending its ID, the TGS's ID, and a timestamp. No password is sent.
+    \item The AS looks up the user, creates the TGT and a session key $K_{c,tgs}$ for talking to the TGS, and encrypts the reply with $K_c$, a key \emph{derived from the user's password}. The workstation asks for the password, derives $K_c$, decrypts the reply, and then forgets the password. Only the real user can open the reply; an impostor at the workstation gets nothing usable. The TGT inside is encrypted with $K_{tgs}$: the client stores it as an opaque blob.
+    \item To use a service $V$, the client sends the TGS the TGT and an \textbf{authenticator}: its ID, address, and a fresh timestamp, encrypted with $K_{c,tgs}$. The TGS opens the TGT with $K_{tgs}$, finds $K_{c,tgs}$ inside, decrypts the authenticator, and checks that names and addresses match and the timestamp is recent. Since only the legitimate client received $K_{c,tgs}$ (in message 2, under its password key), a stolen TGT is useless without it: this answers the proof-of-ownership problem. The authenticator is short-lived and meant to be used once.
+    \item The TGS returns a service ticket for $V$, with a new session key $K_{c,v}$, encrypted with $K_{c,tgs}$. This exchange happens once per type of service, with no password involved.
+    \item The client sends $V$ the ticket and a new authenticator under $K_{c,v}$. $V$ opens the ticket with its own key $K_v$, recovers $K_{c,v}$, and checks the authenticator.
+    \item For mutual authentication, $V$ returns $TS_5 + 1$ encrypted with $K_{c,v}$: only the real $V$ could open the ticket and learn $K_{c,v}$, and adding 1 shows that it decrypted the timestamp rather than replaying the client's own ciphertext.
+\end{enumerate}
+The timestamps and lifetimes bound the replay window: a server rejects authenticators whose timestamp is outside a small tolerance (typically five minutes) and, ideally, remembers recently seen ones to reject exact replays inside it. The price is that \textbf{all clocks must be synchronised}: a client whose clock drifts beyond the tolerance cannot log in. $K_{c,v}$ can then also protect the rest of the session.
+
+\subsection{Realms and principals}
+
+A full-service Kerberos environment, with a Kerberos server, clients, and application servers, requires that the Kerberos server has the user IDs and hashed passwords of all users (all users are registered with it) and shares a secret key with each server (all servers are registered with it). Such an environment is a \textbf{realm}: a set of managed nodes that share the same Kerberos database. The database lives on the Kerberos \emph{master} computer, which should be kept in a physically secure room; read-only copies may live on other Kerberos servers, but every change is made on the master, and accessing or changing the database requires the Kerberos master password.
+
+\paragraph{Principals.} Every user or service known to Kerberos is a \textbf{principal}, named \texttt{primary/\allowbreak instance@\allowbreak REALM}:
+\begin{itemize}
+    \item the \emph{primary} is the username (\texttt{john.doe}) or the service name (\texttt{HTTP});
+    \item the optional \emph{instance} adds context: a role for users (\texttt{john.doe/admin}), the host for services (\texttt{HTTP/webserver.example.com});
+    \item the \emph{realm} is the administrative domain, conventionally in uppercase (\texttt{EXAMPLE.COM}).
+\end{itemize}
+
+\paragraph{Cross-realm authentication.} Organisations have separate realms, and users of one may need services of another. The Kerberos servers of interoperating realms share an \emph{inter-realm key} and are registered with each other. A client in realm A that wants a server in realm B:
+\begin{enumerate}
+    \item[1--2.] obtains a TGT for its local TGS, as usual;
+    \item[3--4.] asks its local TGS for a ticket for the \emph{remote} TGS, encrypted with the inter-realm key;
+    \item[5--6.] presents it to the remote TGS and receives a ticket for the remote server;
+    \item[7.] uses it with the remote server.
+\end{enumerate}
+The remote server trusts the remote TGS, which trusts the local Kerberos server to have authenticated the user. With $N$ realms all trusting each other, $N(N-1)/2$ inter-realm keys are needed: the same quadratic growth as pairwise keys, solved in the same way by a hierarchy (\cref{sec:key-distribution}). The toy cross-realm KDC exercise in that section is a simplified version of this exchange.
+
+\subsection{Kerberos today}
+
+Beyond the slides.
+\begin{itemize}
+    \item \textbf{Version 5} (RFC 4120) fixes the limits of version 4: it supports modern ciphers (AES) instead of DES only, does not depend on IP addresses, allows longer ticket lifetimes and forwarding of credentials, and adds \emph{pre-authentication}: the client must prove knowledge of its key before the AS answers, because the AS reply, encrypted with a key derived from the password, would otherwise let anyone collect material for offline password guessing.
+    \item Kerberos v5 is how users authenticate in a Windows \textbf{Active Directory} domain (every domain controller is a KDC), and it is widely used on Linux and macOS: it is the single sign-on of corporate networks.
+    \item The KDC is the single point of trust of the realm (\cref{sec:key-distribution}): whoever obtains the TGS's long-term key can forge tickets for any user, and whoever steals a user's TGT from a machine's memory can use it until it expires. Protecting domain controllers and limiting ticket lifetimes are central to Windows security, as the computer security module discusses.
+\end{itemize}
+
+\begin{summary}
+\begin{itemize}
+    \item Kerberos (MIT, Project Athena) authenticates users to network services in an environment where workstations cannot be trusted, using a trusted third party and symmetric cryptography only. Requirements: secure, reliable, transparent, scalable.
+    \item The AS authenticates the user once per logon and issues a ticket-granting ticket; the TGS issues service tickets once per type of service; the server grants access once per session.
+    \item The password never travels: the AS reply is encrypted with a key derived from it. Tickets are encrypted for their target server and carry a session key; authenticators (ID, address, timestamp under the session key) prove that the presenter owns the ticket. $\Enc_{K_{c,v}}(TS_5+1)$ authenticates the server.
+    \item Timestamps and lifetimes limit replay, at the cost of synchronised clocks. TGT lifetime trades usability against exposure.
+    \item A realm shares one Kerberos database (master plus read-only replicas); principals are \texttt{primary/instance@REALM}; realms interoperate through inter-realm keys.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+Why does Kerberos use two servers, an AS and a TGS, instead of a single server issuing all tickets?
+\end{exercise}
+\begin{solution}
+With a single server, the user would either have to type the password for every service (unacceptable, against transparency), or the workstation would have to keep the password (or $K_c$) in memory for the whole session (risky). With a TGS, the password is used once to obtain a TGT and a session key $K_{c,tgs}$; all later service tickets are obtained with the TGT and authenticators under $K_{c,tgs}$, which expire, so the long-term password key is exposed only at logon.
+\end{solution}
+
+\begin{exercise}
+An eavesdropper records messages 3 to 5 of a Kerberos session. (a) Can it use the recorded $\mathit{Ticket}_V$ to access $V$ from its own machine? (b) Can it replay message 5 unchanged ten minutes later?
+\end{exercise}
+\begin{solution}
+(a) No: $V$ also requires a fresh authenticator encrypted with $K_{c,v}$, and $K_{c,v}$ travelled only inside message 4, encrypted with $K_{c,tgs}$, which the eavesdropper does not have. The ticket also contains the client's address $AD_C$. (b) No: the authenticator's timestamp $TS_5$ is outside the tolerance window (typically five minutes). Within the window, an exact replay is caught if $V$ remembers recently seen authenticators; this is why authenticators are meant to be used only once.
+\end{solution}
+
+\begin{exercise}
+What is the purpose of message 6, $\Enc_{K_{c,v}}(TS_5 + 1)$? Why $TS_5 + 1$ and not simply $TS_5$?
+\end{exercise}
+\begin{solution}
+It authenticates the server to the client: only the real $V$ knows $K_v$, so only it could open $\mathit{Ticket}_V$, extract $K_{c,v}$, read $TS_5$ from the authenticator, and encrypt $TS_5 + 1$. Returning $TS_5$ unchanged would not prove anything, because an impostor could just send back the encrypted value from the client's own authenticator without decrypting it; the $+1$ forces decryption, transformation, and re-encryption (the same idea as $f(N_2)$ in \cref{fig:kdc}).
+\end{solution}
+
+\begin{exercise}
+A laptop's clock is twelve minutes behind the domain controller's. What happens when its user tries to log in to Kerberos services, and why does Kerberos insist on this?
+\end{exercise}
+\begin{solution}
+Its authenticators carry timestamps outside the allowed skew (typically five minutes), so the TGS and the servers reject them as possible replays and authentication fails. Kerberos relies on timestamps instead of nonces to detect replays without extra round trips, and this only works if all clocks agree within the tolerance; secure time synchronisation is therefore part of a Kerberos deployment.
+\end{solution}
+
+\begin{exercise}
+Write the principal names of: (a) user Maria Rossi in realm \texttt{UNIBO.IT}; (b) the same user's administrative identity; (c) the web service on host \texttt{intranet.unibo.it}. Then describe, at the level of message exchanges, how Maria Rossi obtains a ticket for a server in realm \texttt{POLIMI.IT}.
+\end{exercise}
+\begin{solution}
+\begin{itemize}
+    \item[(a)] \texttt{maria.rossi@UNIBO.IT}
+    \item[(b)] \texttt{maria.rossi/admin@UNIBO.IT}
+    \item[(c)] \texttt{HTTP/intranet.unibo.it@UNIBO.IT}
+\end{itemize}
+Cross-realm: the client obtains a TGT from the \texttt{UNIBO.IT} AS, asks the \texttt{UNIBO.IT} TGS for a ticket for the \texttt{POLIMI.IT} TGS (encrypted with the inter-realm key shared by the two realms), presents it to the \texttt{POLIMI.IT} TGS, which issues a ticket for the target server, and uses that ticket with the server. This requires the two realms to have registered with each other and to share the inter-realm key.
+\end{solution}

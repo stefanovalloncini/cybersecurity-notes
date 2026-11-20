@@ -1,0 +1,222 @@
+% Source: Romandini, 07_CryptographyAuthentication slides (written from the slides only).
+\section{Authentication and Digital Signatures}
+\label{sec:signatures}
+
+At the beginning the goal of cryptography was confidentiality. Over public networks such as the Internet three more properties are needed:
+\begin{itemize}
+    \item \textbf{Integrity}: the receiver can verify that the content of the received message is the content that was sent.
+    \item \textbf{Authentication}: the receiver can verify the identity of the sender.
+    \item \textbf{Digital signature}: a composite property, needed when sender and receiver \emph{do not trust each other}, that plays the role of a handwritten signature.
+\end{itemize}
+Integrity comes from hash functions (\cref{def:hash-properties}): easy to compute, preimage resistant (\enquote{hiding}), second-preimage resistant, and collision resistant, with arbitrary-size input, fixed-size output, and outputs spread evenly over all possible digests (\emph{balanced} or \emph{dispersal}). Preimages and collisions can always be found by brute force, so the digest must be long enough to make it infeasible: about $2^n$ operations for a preimage of an $n$-bit digest, but only $\sqrt{2^n} = 2^{n/2}$ for a collision (birthday bound). Authentication with a shared key is what MACs provide (\cref{sec:base-mechanisms}). This section is about the third property.
+
+\tikzset{
+    sgbox/.style={draw, rounded corners, fill=themegray!12, minimum width=2.1cm, minimum height=0.7cm, font=\footnotesize, align=center},
+    sgdata/.style={draw, minimum width=1.1cm, minimum height=0.55cm, font=\footnotesize},
+    sgkey/.style={font=\footnotesize, align=center, text=themeblue!80!black},
+    sgarr/.style={-{Stealth}, thick},
+}
+
+\subsection{Why authentication is not enough}
+
+With a MAC, the receiver knows that the message comes from someone holding the shared key. Between two parties who trust each other that is enough, but two disputes remain possible:
+\begin{enumerate}
+    \item the \textbf{receiver forges} a different message with the shared key and claims it came from the sender;
+    \item the \textbf{sender denies} having sent a message, claiming the receiver forged it.
+\end{enumerate}
+Since both hold the same key, a third party cannot tell who is right.
+
+\begin{example}[The stockbroker]
+A client orders \enquote{buy 1000 shares} by a MAC-protected message. The price falls, and the client claims the order was fabricated by the broker, who holds the same key. Or the broker really does fabricate orders and blames the client. With a MAC, a judge cannot decide. With a digital signature only the client could have produced the order, so neither claim holds.
+\end{example}
+
+\subsection{From paper to digital signatures}
+
+A handwritten signature on paper has five properties: only one person can produce it, it cannot be forged, it cannot be reused on a different document, the signed document cannot be modified after signing, and the signer cannot repudiate it. A digital signature must give the same guarantees, but it is a string of bits, and bits can be copied perfectly. It therefore cannot be a fixed mark like a handwritten signature: it must depend on the document it signs.
+
+\begin{definition}[Properties of a digital signature]
+\leavevmode
+\begin{itemize}
+    \item \textbf{Authentic}: it proves that the signer deliberately signed the document.
+    \item \textbf{Not reusable}: it belongs to one document and cannot be moved to another.
+    \item \textbf{Unalterable}: once signed, the document cannot be altered without invalidating the signature.
+    \item \textbf{Non-repudiable}: the signer cannot claim not to have signed.
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Digital signature scheme]
+A key-generation algorithm produces a key pair for the signer $A$; then
+\[
+    \Sign(m, k_A^{\mathrm{priv}}) \mapsto \sigma, \qquad \Vrfy(m, \sigma, k_A^{\mathrm{pub}}) \mapsto \{\text{true}, \text{false}\}.
+\]
+Only the holder of the private key can sign; anyone with the public key can verify. (The slides write $\mathrm{Verify}(\sigma, A)$: the message is either an explicit input or recovered from $\sigma$, as in textbook RSA.)
+\end{definition}
+
+\subsection{Hash-then-sign}
+
+Signatures are computed on a \emph{digest} of the message, not on the message itself (\cref{fig:sign-process}): the digest is short and has fixed size, so signing is fast whatever the length of the document, and RSA only works on values smaller than the modulus. The price is that the signature is only as strong as the hash: if an attacker finds two documents with the same digest, a signature on one is valid for the other, so the hash must be \emph{collision resistant} (\cref{sec:base-mechanisms}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.55cm]
+    \node[font=\small\bfseries] (st) at (0,0) {Signer (Bob)};
+    \node[sgdata, below=of st] (m1) {$m$};
+    \node[sgbox, below=of m1] (h1) {hash $H$};
+    \node[sgdata, below=of h1] (d1) {$h$};
+    \node[sgbox, below=of d1] (s1) {private-key\\operation};
+    \node[sgdata, below=of s1] (sig) {$\sigma$};
+    \node[sgkey, left=0.6cm of s1] (k1) {Bob's\\private key};
+    \draw[sgarr] (m1) -- (h1); \draw[sgarr] (h1) -- (d1); \draw[sgarr] (d1) -- (s1); \draw[sgarr] (s1) -- (sig); \draw[sgarr] (k1) -- (s1);
+
+    \node[font=\small\bfseries] (vt) at (7,0) {Verifier (Alice)};
+    \node[sgdata, below=of vt, xshift=-1.4cm] (m2) {$m$};
+    \node[sgbox, below=of m2] (h2) {hash $H$};
+    \node[sgdata, below=of h2] (d2) {$h$};
+    \node[sgdata, below=of vt, xshift=1.4cm] (sg2) {$\sigma$};
+    \node[sgbox, below=of sg2] (v2) {public-key\\operation};
+    \node[sgdata, below=of v2] (hp) {$h'$};
+    \node[sgkey, right=0.6cm of v2] (k2) {Bob's\\public key};
+    \node[sgbox, below=0.9cm of $(d2)!0.5!(hp)$] (cmp) {compare};
+    \node[font=\footnotesize, below=0.35cm of cmp] (res) {valid if $h = h'$};
+    \draw[sgarr] (m2) -- (h2); \draw[sgarr] (h2) -- (d2); \draw[sgarr] (sg2) -- (v2); \draw[sgarr] (k2) -- (v2); \draw[sgarr] (v2) -- (hp);
+    \draw[sgarr] (d2) |- (cmp); \draw[sgarr] (hp) |- (cmp); \draw[sgarr] (cmp) -- (res);
+\end{tikzpicture}
+\caption{The digital signature process with RSA, as on the slides: the signer applies the private-key operation to the digest; the verifier applies the public-key operation to $\sigma$ and compares the result with the digest it recomputes. Other schemes (ECDSA, EdDSA) compute differently, but $\Sign$ and $\Vrfy$ take the same inputs.}
+\label{fig:sign-process}
+\end{figure}
+
+\paragraph{Signing and encrypting.} The slides combine a signature with confidentiality. With $H$ the hash, $\Enc$/$\Dec$ the RSA operations, and $A$ sending to $B$:
+\begin{center}
+\begin{tabular}{@{}l@{\qquad}l@{}}
+\toprule
+$A$ (sign and encrypt) & $B$ (decrypt and verify) \\
+\midrule
+$d = H(m)$ & $m^* = \Dec(c, k_B^{\mathrm{priv}})$ \\
+$s = \Dec(d, k_A^{\mathrm{priv}})$ \quad (sign the digest) & accept if $H(m^*) = \Enc(s, k_A^{\mathrm{pub}})$ \\
+$c = \Enc(m, k_B^{\mathrm{pub}})$ \quad (encrypt the message) & \\
+send $\langle A, c, s \rangle$ & \\
+\bottomrule
+\end{tabular}
+\end{center}
+Writing the signature as \enquote{decrypting the digest with the private key} is the RSA mental model (\cref{sec:asymmetric}); in practice $m$ is encrypted with a symmetric session key (hybrid encryption, \cref{sec:rsa-practice}).
+
+\begin{remark}[Two pitfalls of the textbook protocol]
+Beyond the slides; both are discussed by Davis \cite{davis2001}.
+\begin{itemize}
+    \item \emph{The signature leaks the digest.} $s$ travels in clear, and anyone with $A$'s public key computes $\Enc(s, k_A^{\mathrm{pub}}) = H(m)$. If $m$ is guessable (a vote \enquote{yes} or \enquote{no}, an amount from a small range), the attacker hashes each candidate and compares: the encryption of $m$ is bypassed. The signature must be encrypted together with the message: $c = \Enc(m \concat s, k_B^{\mathrm{pub}})$.
+    \item \emph{Surreptitious forwarding.} After decrypting, $B$ holds $m$ and $A$'s valid signature on it, and can re-encrypt both for Carol. Carol sees a message signed by $A$ and believes $A$ wrote it to her (e.g.\ \enquote{I accept your offer}). The signature says nothing about the intended recipient; the fix is to sign the recipient's name too: $s = \Sign(H(B \concat m))$.
+\end{itemize}
+\end{remark}
+
+\subsection{The properties, and their limits}
+
+With hash-then-sign:
+\begin{itemize}
+    \item \textbf{Authentic}: only the holder of $k_A^{\mathrm{priv}}$, i.e.\ $A$, can generate the signature.
+    \item \textbf{Not reusable}: the signature is a function of the message, so it cannot be copied onto another one.
+    \item \textbf{Unalterable?} Modifying the message would require a new signature, which only $A$ can produce, \emph{provided} that the hash is collision resistant and second-preimage resistant.
+    \item \textbf{Non-repudiable?} $A$ cannot deny the signature, since only $A$ knows $k_A^{\mathrm{priv}}$, \emph{provided} that this is true.
+\end{itemize}
+The question marks on the slides are deliberate. A signature proves that \emph{a key} signed, not who owns the key, nor that its owner was in control of it. If the private key is stolen, the thief signs in $A$'s name; and $A$ can always claim that the key was stolen, sometimes truthfully. Non-repudiation therefore also needs a trusted binding between key and identity (certificates, \cref{sec:pki}), a way to revoke compromised keys, and a trusted record of \emph{when} a document was signed, to tell whether it happened before or after the key was reported stolen.
+
+\subsection{Signatures in practice}
+
+\begin{itemize}
+    \item \enquote{Encrypting the hash with the private key} is only a mental model, and only for RSA. Real schemes are more careful: \textbf{RSA-PSS} (RSA with random padding), \textbf{ECDSA} (elliptic curves), and \textbf{EdDSA}, e.g.\ Ed25519.
+    \item Some schemes need a \textbf{fresh random number for every signature}. If it is repeated or predictable, the private key is revealed: that is how Sony's PlayStation~3 signing key was recovered in 2010.
+    \item \textbf{Post-quantum signatures} exist: ML-DSA (FIPS 204) and SLH-DSA (FIPS 205), standardised by NIST in 2024 (\cref{sec:asymmetric}). They are much larger: an ML-DSA-44 signature is 2420 bytes and the smallest SLH-DSA signature 7856 bytes, against 64 bytes for Ed25519.
+\end{itemize}
+
+\begin{remark}[Why a repeated ECDSA nonce reveals the key]
+Beyond the slides. With private key $d$, group order $n$, message digest $z$ and per-signature secret $k$, ECDSA computes $r = (kG)_x \bmod n$ and $s = k^{-1}(z + r\,d) \bmod n$, and the signature is $(r, s)$. Two signatures with the same $k$ have the same $r$, which is visible, and
+\[
+    s_1 - s_2 = k^{-1}(z_1 - z_2) \;\Rightarrow\; k = \frac{z_1 - z_2}{s_1 - s_2} \bmod n, \qquad d = \frac{s_1 k - z_1}{r} \bmod n.
+\]
+Sony used the same $k$ for every signature. EdDSA avoids the problem by design: the per-signature secret is derived deterministically by hashing the private key together with the message, so no random number is needed at signing time.
+\end{remark}
+
+\begin{minted}{python}
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.exceptions import InvalidSignature
+
+sk = Ed25519PrivateKey.generate()
+pk = sk.public_key()
+
+contract = b"A sells B the car for 5000 EUR, 2026-11-20"
+sig = sk.sign(contract)
+print(len(sig), sig == sk.sign(contract))
+
+pk.verify(sig, contract)
+try:
+    pk.verify(sig, contract.replace(b"5000", b"500"))
+except InvalidSignature:
+    print("InvalidSignature")
+\end{minted}
+
+The first line prints \texttt{64 True}: an Ed25519 signature is 64 bytes, and signing the same message twice gives the same signature, because the nonce is derived from the key and the message. Changing one character of the contract makes verification fail. Compare with RSA-PSS in the lab section (\cref{sec:crypto-lab}), which is randomised.
+
+\subsection{Signatures and trust}
+
+\begin{itemize}
+    \item Non-repudiation needs a trusted binding between a public key and an identity: \textbf{certificates} (\cref{sec:pki}).
+    \item In the EU, the eIDAS Regulation distinguishes simple, advanced, and \textbf{qualified electronic signatures}. A qualified signature is created with a qualified signature-creation device (a smart card, a token, or a remote signing service run by a qualified provider) and based on a qualified certificate; it has the \emph{same legal value as a handwritten signature} in every member state. The Italian \emph{firma digitale} is of this kind.
+    \item A signature is only as trustworthy as the \textbf{key generation}: in October 2026 some keys of the certification authority eMudhra turned out to be tiny numbers (4, 56, 66, \dots), so anybody could sign in its name (\cref{sec:base-mechanisms}).
+\end{itemize}
+
+\subsection{Remaining issues}
+
+\begin{itemize}
+    \item \textbf{Replay.} A signed \enquote{Transfer \$100 from A to B's account} stays valid forever: B can present it twice. A signature guarantees origin and integrity, not freshness. The signed content must include something that makes it unique: a \textbf{timestamp}, a sequence number, or a nonce, which the receiver checks and records. For long-term evidence, a trusted \emph{time-stamping authority} can countersign the signature with the time (RFC 3161), proving that it existed before a given date.
+    \item \textbf{Obtaining public keys.} Verifying requires the signer's authentic public key: with a forged one, anyone can produce \enquote{valid} signatures. This is the public-key distribution problem of \cref{sec:key-distribution}, solved by certificates.
+\end{itemize}
+
+\begin{summary}
+\begin{itemize}
+    \item Modern cryptography adds integrity (hashes), authentication (MACs), and digital signatures to confidentiality. Signatures are needed when sender and receiver do not trust each other: with a MAC either party could have produced the message.
+    \item A digital signature must be authentic, not reusable, unalterable, and non-repudiable. Since bits can be copied, it must be a function of the signed document.
+    \item Hash-then-sign: sign $H(m)$ with the private key, verify with the public key. Fast and length-independent, but only as strong as the hash's collision resistance.
+    \item When combining signing and encryption, encrypt the signature too (it leaks $H(m)$) and sign the recipient's identity (against forwarding).
+    \item A signature proves that a key signed, not who owns the key: non-repudiation also needs certificates, revocation, and trusted time.
+    \item In practice: RSA-PSS, ECDSA (a repeated nonce reveals the key, as in the PS3 case), EdDSA (deterministic nonces); post-quantum ML-DSA and SLH-DSA. In the EU, qualified electronic signatures equal handwritten ones.
+    \item Signed messages can be replayed: include a timestamp, sequence number, or nonce in the signed data.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+Alice and her bank share a key and authenticate transfer orders with HMAC. Alice disputes an order of €10{,}000 that the bank executed. Can the bank prove in court that Alice sent it? What changes if orders are signed with Alice's private key?
+\end{exercise}
+\begin{solution}
+No. The bank also holds the HMAC key, so it could have produced the tag itself; the tag proves to the bank that the order came from Alice or from the bank, which convinces nobody else. With a digital signature only the holder of Alice's private key can produce a valid signature, and anyone can verify it with her public key, so the bank can show the judge the signed order. Alice can still claim that her key was stolen: the outcome then depends on when the key was revoked and on how it was protected (e.g.\ a qualified signature device).
+\end{solution}
+
+\begin{exercise}
+In an online election, each voter sends $\langle c, s \rangle$ with $c = \Enc(\text{vote}, k_{\mathrm{server}}^{\mathrm{pub}})$ and $s = \Sign(H(\text{vote}), k_{\mathrm{voter}}^{\mathrm{priv}})$, where the vote is \enquote{yes} or \enquote{no}. Show that an eavesdropper learns every vote, and fix the protocol.
+\end{exercise}
+\begin{solution}
+The eavesdropper knows the voters' public keys. For textbook RSA it computes $\Enc(s, k_{\mathrm{voter}}^{\mathrm{pub}}) = H(\text{vote})$ and compares it with $H(\text{yes})$ and $H(\text{no})$; for any signature scheme it can simply check whether $s$ verifies on \enquote{yes} or on \enquote{no}. Either way the two-candidate space is searched instantly, and the encryption of the vote is useless. Fix: encrypt the signature together with the vote, $c = \Enc(\text{vote} \concat s, k_{\mathrm{server}}^{\mathrm{pub}})$ (with hybrid encryption in practice), and include a fresh nonce or the election identifier in the signed data against replay.
+\end{solution}
+
+\begin{exercise}
+Alice sends Bob a signed and encrypted message \enquote{I accept your offer}. Bob decrypts it and sends the plaintext and Alice's signature, encrypted, to Carol, who had made Alice a different offer. What does Carol conclude, and how should Alice have signed?
+\end{exercise}
+\begin{solution}
+Carol decrypts, verifies Alice's signature successfully, and concludes that Alice accepted \emph{her} offer: the signature binds Alice to the text, not to the recipient (surreptitious forwarding). Alice should sign a message that names the recipient and the offer, e.g.\ $\Sign(H(\text{Bob} \concat \text{offer id} \concat \text{I accept}))$, so that the signed content is meaningless in any other context.
+\end{solution}
+
+\begin{exercise}
+Two ECDSA signatures by the same key have the same $r = 37$, so they used the same nonce $k$. Working modulo the group order $n = 101$ (a toy value), the first has digest $z_1 = 15$ and $s_1 = 64$, the second $z_2 = 62$ and $s_2 = 43$. Recover $k$ and the private key $d$. (Useful inverses mod 101: $21^{-1} = 77$, $37^{-1} = 71$.)
+\end{exercise}
+\begin{solution}
+$k = (z_1 - z_2)(s_1 - s_2)^{-1} = (15 - 62) \cdot 21^{-1} \equiv 54 \cdot 77 = 4158 \equiv 17 \pmod{101}$.
+$d = (s_1 k - z_1)\, r^{-1} = (64 \cdot 17 - 15) \cdot 37^{-1} = 1073 \cdot 71 \equiv 63 \cdot 71 = 4473 \equiv 29 \pmod{101}$.
+Check: $k^{-1}(z_1 + r d) = 17^{-1}(15 + 37 \cdot 29) \bmod 101 = 64 = s_1$. With $d$ the attacker signs anything in the owner's name.
+\end{solution}
+
+\begin{exercise}
+A bank accepts signed orders of the form \enquote{transfer \emph{amount} from \emph{account} to \emph{account}}. What can an attacker who records one order do, and what must the signed message contain to prevent it?
+\end{exercise}
+\begin{solution}
+Replay it: the signature stays valid, so the same transfer is executed again and again. The signed content must make each order unique and checkable: a sequence number or nonce that the bank records and refuses to accept twice, and/or a timestamp with a short validity window. The bank's identity as recipient should also be signed, so the order cannot be presented elsewhere.
+\end{solution}

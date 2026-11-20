@@ -82,7 +82,7 @@ Master keys still have to be distributed somehow, but the scale of the problem d
 Steps 4 and 5 are an \emph{authentication} handshake: they convince $B$ that the party at the other end really holds $K_s$, and that step 3 is not an old message being replayed by somebody else. Echoing $N_2$ unchanged would not do, since anyone could resend the ciphertext of step 4 without decrypting it; applying $f$ forces $A$ to decrypt, transform, and re-encrypt.
 
 \begin{remark}[A known weakness: replaying old tickets]
-Beyond the slides. This is essentially the Needham--Schroeder protocol of 1978 \cite{needham1978}. In 1981 Denning and Sacco \cite{denning1981} pointed out a gap: $N_1$ protects $A$, but nothing tells $B$ that the ticket of step 3 is fresh. An attacker who recorded an old run and, much later, learns that run's session key $K_s$ (e.g.\ from a compromised machine) can replay the old step 3, decrypt $B$'s challenge with the old $K_s$, answer it, and be accepted by $B$ as $A$. The fix is to put a \textbf{timestamp} (or a nonce chosen by $B$) inside the ticket and to give session keys a short lifetime. Kerberos, covered in a later lecture, takes exactly this route.
+Beyond the slides. This is essentially the Needham--Schroeder protocol of 1978 \cite{needham1978}. In 1981 Denning and Sacco \cite{denning1981} pointed out a gap: $N_1$ protects $A$, but nothing tells $B$ that the ticket of step 3 is fresh. An attacker who recorded an old run and, much later, learns that run's session key $K_s$ (e.g.\ from a compromised machine) can replay the old step 3, decrypt $B$'s challenge with the old $K_s$, answer it, and be accepted by $B$ as $A$. The fix is to put a \textbf{timestamp} (or a nonce chosen by $B$) inside the ticket and to give session keys a short lifetime. Kerberos (\cref{sec:kerberos}) takes exactly this route.
 \end{remark}
 
 \begin{remark}[The KDC is a single point of trust]
@@ -280,7 +280,7 @@ This is more secure than announcements, but the directory becomes a target: an a
 
 \paragraph{Public-key authority.} Beyond the slides' detail: a stricter variant in which the authority is online and answers every request for a public key with a reply \emph{signed with its own private key}, including the original request and a timestamp, so that the answer cannot be forged or replayed. Every user only needs to know the authority's public key. The drawback is that the authority must be contacted for every new correspondent: it is a performance bottleneck and a single point of failure.
 
-\paragraph{Public-key certificates.} The authority signs, once, a document that binds a name to a public key (a \emph{certificate}). Participants exchange certificates directly and verify them offline with the authority's public key, with no need to contact the authority each time. Certificates are the subject of a later lecture.
+\paragraph{Public-key certificates.} The authority signs, once, a document that binds a name to a public key (a \emph{certificate}). Participants exchange certificates directly and verify them offline with the authority's public key, with no need to contact the authority each time. Certificates are covered in \cref{sec:pki}.
 
 \begin{table}[H]
 \centering
@@ -293,7 +293,7 @@ Scheme & How the key is obtained & Weakness \\
 Public announcement & Directly from its claimed owner & Anyone can forge an announcement \\
 Public directory & From a directory kept by an authority & The directory and access to it must be protected \\
 Public-key authority & On request, in a reply signed by the authority & Authority online for every request: bottleneck \\
-Certificates & From anyone, signed once by the authority & Trust in the authority; revocation (later lecture) \\
+Certificates & From anyone, signed once by the authority & Trust in the authority; revocation (\cref{sec:pki}) \\
 \bottomrule
 \end{tabularx}
 \end{table}

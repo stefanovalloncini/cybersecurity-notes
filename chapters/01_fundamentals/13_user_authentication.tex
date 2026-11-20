@@ -1,0 +1,235 @@
+% Source: Romandini, 11_Identification slides (written from the slides only).
+\section{User Authentication and Digital Identity}
+\label{sec:user-auth}
+
+In most security contexts user authentication is the fundamental building block and the first line of defence: access control, accounting, and auditing all rely on knowing \emph{who} is acting. Authentication has two steps:
+\begin{itemize}
+    \item \textbf{identification}: presenting an identifier to the system (a username, an e-mail address). Identifiers must be assigned carefully, because authenticated identities are the basis of the other security services;
+    \item \textbf{verification}: presenting or generating authentication information that corroborates the binding between the entity and the identifier (a password, a signature made with a private key).
+\end{itemize}
+
+\begin{definition}[Authentication factors]
+\leavevmode
+\begin{itemize}
+    \item Something the individual \textbf{knows}: password, PIN.
+    \item Something the individual \textbf{has}: cryptographic keys, smart cards, physical or electronic keys.
+    \item Something the individual \textbf{is}: static biometrics (fingerprint, retina, face).
+    \item Something the individual \textbf{does}: dynamic biometrics (voice pattern, handwriting, typing rhythm).
+\end{itemize}
+\textbf{Multi-factor authentication} (MFA) combines factors of \emph{different} kinds, so that stealing one is not enough.
+\end{definition}
+
+\subsection{Mutual authentication and protocol attacks}
+
+\textbf{Mutual authentication} lets two parties convince each other of their identities and, usually, exchange session keys. Two issues are central:
+\begin{itemize}
+    \item \textbf{confidentiality}: identification and session-key information must travel encrypted, which requires secret or public keys to exist beforehand (\cref{sec:key-distribution});
+    \item \textbf{timeliness}: replayed messages could let an opponent compromise a session key or impersonate a party.
+\end{itemize}
+
+\paragraph{Replay attacks.}
+\begin{itemize}
+    \item \emph{Simple replay}: the opponent copies a message and replays it later.
+    \item \emph{Repetition that can be logged}: a timestamped message is replayed within its validity window.
+    \item \emph{Repetition that cannot be detected}: the original message was suppressed, so only the replay arrives.
+    \item \emph{Backward replay without modification}: the message is replayed back to its \emph{sender}, which is possible with symmetric encryption when the sender cannot tell from the content its own messages from those it receives.
+\end{itemize}
+Two countermeasures:
+\begin{itemize}
+    \item \textbf{Timestamps}: $A$ accepts a message as fresh only if it carries a timestamp close enough to $A$'s current time. Requires synchronised clocks, and an attacker who can tamper with clocks can exploit the tolerance window.
+    \item \textbf{Challenge/response}: $A$, expecting a fresh message from $B$, first sends a \textbf{nonce} (challenge) and accepts only a response that contains it. No clocks needed, but an extra round trip, and unsuitable for connectionless one-shot messages.
+\end{itemize}
+The KDC protocol (\cref{fig:kdc}) and the public-key authority (\cref{fig:pk-authority}) use both.
+
+\paragraph{Other attacks on authentication protocols.}
+\begin{itemize}
+    \item \textbf{Impersonation}: one entity pretends to be another.
+    \item \textbf{Interleaving}: the adversary combines information from previous or parallel runs of the protocol, possibly started by the adversary itself.
+    \item \textbf{Reflection}: an interleaving attack that sends information from an ongoing run back to its originator (e.g.\ answering $A$'s challenge by opening a parallel session in which $A$ is asked the same challenge).
+    \item \textbf{Forced delay}: the adversary intercepts a message (typically with a sequence number) and relays it later. It is not a replay, since the message is delivered only once.
+    \item \textbf{Chosen-text attack}: against challenge/response, the adversary chooses challenges strategically to extract information about the claimant's long-term key.
+\end{itemize}
+Authentication protocols are either \emph{passive} (the same password every time) or \emph{active}: one-time passwords, challenge/response, zero-knowledge proofs.
+
+\subsection{Passwords}
+
+Passwords are by far the most common method. According to the slides, an average person has about 25 online accounts but only 54\% use different passwords across them: many choose convenience over security. For developers, transmitting and storing passwords securely is a burdensome overhead.
+
+\paragraph{Choosing a password.} Current guidance (NIST SP 800-63B-4 \cite{nist80063b4}) has moved away from the old complexity rules:
+\begin{itemize}
+    \item no personal information, no sequences of adjacent keys, no simple manipulations (letters replaced by digits, which attackers anticipate);
+    \item \textbf{length matters more than character types}: prefer long passphrases. NIST requires at least 15 characters when a password is the only factor;
+    \item change a password \textbf{only when it may be compromised}: forced periodic rotation is no longer recommended, since it pushes users towards predictable variations;
+    \item check new passwords against lists of known leaked passwords, and use a \textbf{password manager}, so that every account can have a different random password.
+\end{itemize}
+
+\paragraph{Passwords are shared secrets.} The service (the \emph{relying party}, RP) must know or be able to check the secret, so a password can be stolen from either side:
+\begin{itemize}
+    \item \textbf{guessing}: users choose predictable passwords, so attackers try common ones against many accounts (\emph{password spraying}) or many guesses against one;
+    \item \textbf{credential stuffing}: passwords leaked by one service are tried on others, which works because of password reuse. Leaked credentials are traded in bulk, and services such as Have I Been Pwned let users check whether their accounts appear in known breaches;
+    \item \textbf{database theft}: an attacker who steals the RP's user table can attack the stored password hashes offline, at leisure;
+    \item \textbf{phishing}: the user types the password into a fake site (\cref{sec:security-basics});
+    \item \textbf{weak recovery}: reset questions (\enquote{your mother's name?}) can often be answered from social media, and reset links go to mailboxes that may already be compromised.
+\end{itemize}
+Under the GDPR, companies that do not properly protect user data can be fined heavily.
+
+\paragraph{Storing passwords.} A service must never store passwords in clear, nor encrypted with a key it holds: it stores a \emph{hash}, and at login hashes the submitted password and compares. Since hashes are one-way (\cref{sec:base-mechanisms}), a stolen table does not directly reveal passwords, but an attacker can still hash candidate passwords and compare. Two defences make that expensive:
+\begin{itemize}
+    \item a random \textbf{salt} per password, stored with the hash: identical passwords get different hashes, and tables of hashes precomputed once cannot be reused across users or services;
+    \item a deliberately \textbf{slow} (and ideally memory-hard) password-hashing function: bcrypt, scrypt, Argon2, or PBKDF2 with many iterations (\cref{sec:crypto-lab}). A fast general-purpose hash such as MD5 or SHA-256 is the wrong tool.
+\end{itemize}
+Even so, a password from a list of common ones is found quickly: storage protects strong passwords, not weak ones.
+
+\subsection{Multi-factor authentication}
+
+MFA blocks the large majority of attacks that use a stolen password, but factors differ in strength:
+\begin{itemize}
+    \item \textbf{SMS codes} are weak: with \emph{SIM swapping} an attacker convinces the mobile operator to move the victim's number to a new SIM, and receives the codes;
+    \item \textbf{authenticator apps} (one-time codes or push approvals) are better than SMS, but plain push approvals can be abused by \emph{MFA fatigue}: repeated requests until the tired user accepts one, as in the Uber breach of 2022. Showing a number that the user must type in the app (number matching) counters it;
+    \item one-time codes can still be relayed by a \emph{phishing proxy}, a fake site that forwards the password and the code to the real one in real time and steals the resulting session;
+    \item for high-value accounts, use \textbf{phishing-resistant MFA}: FIDO2 security keys or passkeys, where the credential is bound to the real site.
+\end{itemize}
+
+\subsection{Passwordless authentication: FIDO2 and passkeys}
+
+The root problem of passwords is that they are \emph{shared secrets}. Passwordless methods eliminate them: the user enters a public identifier (or nothing) and proves their identity with a registered device or token, which holds a \textbf{private key} that never leaves it. The RP stores only the public key, which is useless to a thief.
+
+\paragraph{Benefits and drawbacks.} Greater security, better user experience, lower IT costs (fewer password resets), better visibility of credential usage; on the other side, implementation costs, the need for training and expertise, the authenticator as a single point of failure (hence recovery options), and scalability. Microsoft Entra ID (formerly Azure AD) is an example of a commercial deployment.
+
+\paragraph{Standards.} The \textbf{FIDO Alliance}, founded in 2012, published two protocols in 2014: FIDO UAF (passwordless) and FIDO U2F (second factor). In 2019 the W3C adopted \textbf{Web Authentication} (WebAuthn), the core of \textbf{FIDO2}, as a web standard. The components are:
+\begin{itemize}
+    \item the \textbf{authenticator}: \emph{roaming} (a USB or NFC security key) or \emph{platform} (built into the phone or laptop, unlocked with a PIN or biometric); it talks to the client through the CTAP protocol;
+    \item the \textbf{client} (browser and operating system), which exposes the WebAuthn API to the site's JavaScript and, crucially, tells the authenticator the real \emph{origin} of the page;
+    \item the \textbf{relying party} (the server), which stores public keys and verifies signatures, optionally checking the authenticator's attestation against the FIDO Metadata Service.
+\end{itemize}
+
+\paragraph{Registration.} The RP sends a random \textbf{challenge} (against replay), its identifier \texttt{rpID} (its domain, e.g.\ \texttt{example.com}), a random user handle, the acceptable public-key algorithms, the desired authenticator type, whether the credential should be discoverable (stored on the authenticator) and whether user verification (PIN or biometric) is required, a timeout, and whether it wants \emph{attestation}. The client checks that the page's origin matches \texttt{rpID}, the authenticator verifies the user's presence, generates a \textbf{new key pair for this RP}, stores the private key with \texttt{rpID} and a credential ID, and returns the public key, signed with its \emph{attestation} key: a key embedded by the manufacturer that lets the RP check which model of authenticator it is (identified by its AAGUID) and how secure it is. The RP verifies origin, challenge, and attestation, and stores user ID, credential ID, and public key.
+
+\paragraph{Authentication.} The RP sends a fresh challenge; the client adds the origin; the authenticator checks that the credential belongs to that \texttt{rpID}, asks for user presence or verification, and signs the challenge and the origin data with the credential's private key; the RP verifies origin, challenge, credential ID, and the signature with the stored public key.
+
+\paragraph{Binding the credential to a person.} Registration ties a credential to an account, but someone must decide which person that account is: trust on first use, an invitation, identity proofing (checking a document), or binding to an existing credential. Users should register several authenticators, so that losing one does not lock them out.
+
+\paragraph{Three uses.} FIDO2 can be a second factor after username and password; \emph{passwordless}, with just the username; or \emph{usernameless}, with a discoverable credential that also tells the RP who the user is.
+
+\begin{definition}[Passkey]
+A FIDO2 credential (a key pair), usually synchronised across the user's devices by the platform (Apple, Google, Microsoft, password managers). Signing in on another device works by scanning a QR code, with a Bluetooth check that the phone is physically nearby.
+\end{definition}
+
+The trade-off: synced passkeys are as safe as the account that synchronises them; hardware security keys, whose private keys cannot be exported, remain the strongest option.
+
+\paragraph{Why FIDO2 resists phishing.} A user can be fooled by \texttt{examp1e.com}; the browser cannot. The authenticator only uses a credential for the \texttt{rpID} it was created for, and the signed data include the origin reported by the browser. A fake site gets no signature at all, or a signature bound to the wrong origin that the real RP rejects. The toy model below (Ed25519 standing in for the authenticator's key; real WebAuthn signs more data) shows the mechanism:
+
+\begin{minted}{python}
+import hashlib, secrets
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.exceptions import InvalidSignature
+
+authenticator = {}
+rp_db = {}
+
+def register(rp_id, user):
+    sk = Ed25519PrivateKey.generate()
+    authenticator[rp_id] = sk
+    rp_db[(rp_id, user)] = sk.public_key()
+
+def sign_in(origin, challenge):
+    sk = authenticator.get(origin)
+    if sk is None:
+        return None
+    return sk.sign(hashlib.sha256(origin.encode()).digest() + challenge)
+
+def verify(rp_id, user, challenge, signature):
+    message = hashlib.sha256(rp_id.encode()).digest() + challenge
+    try:
+        rp_db[(rp_id, user)].verify(signature, message)
+        return True
+    except (InvalidSignature, TypeError):
+        return False
+
+register("example.com", "X168E")
+
+challenge = secrets.token_bytes(32)
+print(verify("example.com", "X168E", challenge, sign_in("example.com", challenge)))
+print(sign_in("examp1e.com", challenge))
+replayed = sign_in("example.com", challenge)
+print(verify("example.com", "X168E", secrets.token_bytes(32), replayed))
+\end{minted}
+
+It prints \texttt{True} (normal sign-in), \texttt{None} (the look-alike domain has no credential, so there is nothing to steal), and \texttt{False} (a recorded response does not answer a new challenge). In summary: no password is created; there is a different key pair for every site; social engineering fails without the authenticator; every credential is scoped to one RP; and the public keys stored by the RP are worthless to an attacker who steals them.
+
+\subsection{Models of digital identity}
+
+\paragraph{Centralised identity.} Each service keeps its own accounts. A central authority holds the identities (data breaches, single point of failure); usernames and passwords bring all the problems above; one identity per service is poor usability; and every provider must safeguard user data and is liable for it (GDPR).
+
+\paragraph{Federated identity.} Users reuse one identity across many services. The application does not keep credentials: it relies on an \textbf{identity provider} (IdP) that already holds the user's electronic identity, on the basis of trust relationships between the parties.
+\begin{itemize}
+    \item \textbf{OAuth 2.0} (RFC 6749) is an \emph{authorisation} framework: it lets a service access data managed by another application on the user's behalf, receiving only the access it needs (e.g.\ a printing service reading your photos without your password).
+    \item \textbf{OpenID Connect} (OIDC) is a thin \emph{identity} layer on top of OAuth 2.0: it adds login and profile information about the user. An OIDC authorisation server is the IdP, and one login across many applications is \textbf{single sign-on} (SSO).
+    \item In practice: \textbf{SPID}, the Italian public digital identity, is a federation of accredited identity providers trusted by public and private service providers; \emph{social login} (\enquote{Sign in with Google}) is the same idea with commercial IdPs.
+\end{itemize}
+Limits: dependency on the IdP (if it is compromised or down, access fails); limited privacy (the IdP can see every service the user logs into, and personal data are centralised and shared); reduced user control over where data go.
+
+\paragraph{Self-sovereign identity (SSI).} The latest stage: individuals hold their own identity data and decide when, if, and how to disclose them.
+\begin{itemize}
+    \item A \textbf{decentralised identifier} (DID, a W3C standard) identifies a subject (a person, an organisation, a device). It resolves to a \textbf{DID document} with public keys, service endpoints, and authentication parameters. The subject proves control of the DID with the matching private key; the verifier fetches the DID document from a \textbf{verifiable data registry} (VDR), often, but not necessarily, a blockchain.
+    \item A \textbf{verifiable credential} (VC) is a set of claims (e.g.\ \enquote{born on \dots}, \enquote{holds a degree in \dots}) signed by an \emph{issuer}, kept by the \emph{holder} in a wallet on their device, and shown to a \emph{verifier}, who checks the issuer's signature without contacting the issuer.
+    \item \textbf{Selective disclosure}: the holder reveals only what the transaction needs; to buy alcohol, \enquote{over 18}, not name, address, and date of birth.
+    \item VCs vs X.509 (\cref{sec:pki}): a certificate is a fixed format that binds data to a public key; a VC can carry any claim, as long as the verifier can interpret it.
+\end{itemize}
+
+\paragraph{Europe: eIDAS 2.0.} Regulation (EU) 2024/1183, in force since May 2024, creates the European Digital Identity Framework. Every member state must offer citizens a free \textbf{EU Digital Identity Wallet} by the end of 2026 (its use is optional). The wallet stores identity data and attested attributes with selective disclosure, i.e.\ the SSI model; public services must accept it, and acceptance by large private services (banks, telecoms, big platforms) follows. It also lets users create qualified electronic signatures (\cref{sec:signatures}).
+
+\begin{summary}
+\begin{itemize}
+    \item Authentication = identification + verification, with factors you know, have, are, or do; MFA combines different kinds.
+    \item Mutual authentication needs confidentiality and timeliness. Replays are countered with timestamps (synchronised clocks) or challenge/response (nonces); other attacks: impersonation, interleaving, reflection, forced delay, chosen text.
+    \item Passwords are shared secrets: guessed, reused, phished, stolen from databases. Guidance: long passphrases, no forced rotation, blocklists, password managers. Store them salted and with slow password-hashing functions.
+    \item MFA stops most password attacks; SMS is weak (SIM swap), push approvals suffer fatigue, codes can be relayed. Phishing-resistant MFA binds the credential to the site.
+    \item FIDO2/WebAuthn: one key pair per site in an authenticator; registration (with attestation) and authentication by signing a challenge with the origin. Passkeys are synchronised FIDO2 credentials.
+    \item Identity models: centralised, federated (OAuth 2.0 for authorisation, OIDC for identity, SSO, SPID), self-sovereign (DIDs, verifiable credentials, selective disclosure), now in the EU Digital Identity Wallet.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+Classify each as knows, has, is, or does: (a) a PIN; (b) a FIDO2 security key; (c) a face scan; (d) typing rhythm; (e) a code from an authenticator app. Is \enquote{password + security question} multi-factor authentication?
+\end{exercise}
+\begin{solution}
+(a) Knows. (b) Has. (c) Is. (d) Does. (e) Has: the code proves possession of the device holding the app's secret. \enquote{Password + security question} is not MFA: both are things the user knows, and both can be stolen in the same way (phishing, or research on social media).
+\end{solution}
+
+\begin{exercise}
+Compare timestamps and challenge/response as defences against replay: what does each need, and when would you prefer one or the other?
+\end{exercise}
+\begin{solution}
+Timestamps need synchronised clocks and a tolerance window, within which a replay is still possible unless the receiver also logs recent messages; they need no extra message, so they suit one-way or store-and-forward communication. Challenge/response needs no clocks and guarantees freshness, but needs an extra round trip and state at the challenger (the outstanding nonce), so it suits interactive protocols such as a login.
+\end{solution}
+
+\begin{exercise}
+A company forces employees to change their 8-character password every 90 days and requires a digit and a symbol. What does current NIST guidance say about each rule, and what would you recommend instead?
+\end{exercise}
+\begin{solution}
+Periodic forced rotation is no longer recommended: users respond with predictable variations (\texttt{Summer2026!} becomes \texttt{Autumn2026!}); passwords should change only when there is evidence of compromise. Composition rules are discouraged: they add little entropy and encourage predictable patterns. Instead: a longer minimum length (15 characters if the password is the only factor), checks against lists of leaked and common passwords, support for password managers (allow pasting), and MFA, preferably phishing-resistant.
+\end{solution}
+
+\begin{exercise}
+An attacker sets up a perfect copy of a bank's login page on a look-alike domain and relays everything to the real bank in real time. Which of these protects the user: (a) a strong unique password; (b) SMS codes; (c) authenticator-app codes; (d) a FIDO2 security key? Explain.
+\end{exercise}
+\begin{solution}
+(a), (b), (c) do not: the user types the password and the current code into the fake page, and the proxy immediately uses them on the real site, obtaining a valid session. (d) does: the browser reports the look-alike origin to the authenticator, which has no credential for that domain (or signs data bound to it, which the bank rejects), so there is nothing the proxy can relay. The protection does not depend on the user noticing the fake domain.
+\end{solution}
+
+\begin{exercise}
+An attacker steals a relying party's database. What does it gain if the database stores (a) unsalted SHA-256 hashes of passwords, (b) salted Argon2 hashes, (c) FIDO2 public keys?
+\end{exercise}
+\begin{solution}
+(a) A lot: SHA-256 is fast and unsalted, so common and weak passwords are recovered quickly, identical passwords are visible, and work done once applies to every user and every other unsalted database; recovered passwords can then be tried on other services. (b) Much less: each guess is slow and must be repeated for each salt, so only weak passwords fall, slowly. (c) Nothing useful for logging in: a public key does not let anyone produce signatures, and each key is valid only for that site.
+\end{solution}
+
+\begin{exercise}
+A wine shop must check that a customer is of age. Compare showing an identity card, logging in with SPID, and presenting a verifiable credential from the EU Digital Identity Wallet, in terms of what the shop learns and who else learns about the purchase.
+\end{exercise}
+\begin{solution}
+The identity card shows everything printed on it (name, date of birth, address, document number), and the shop may copy it. With SPID the identity provider authenticates the user and passes attributes to the shop; the provider learns that the user logged in to the shop, and the shop receives the attributes it requested. With a verifiable credential and selective disclosure the wallet presents only the claim \enquote{over 18}, signed by the issuer; the shop verifies the signature offline and learns nothing else, and the issuer is not contacted, so it does not learn about the purchase.
+\end{solution}

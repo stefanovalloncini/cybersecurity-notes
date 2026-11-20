@@ -1,0 +1,239 @@
+% Source: Romandini, 09_Certificates slides (written from the slides only);
+%         ExMaster exercise slides (inspecting a certificate chain).
+\section{Certificates and Public Key Infrastructure}
+\label{sec:pki}
+
+Whoever encrypts a message must be sure that the public key really belongs to the destination, and whoever verifies a signature must be sure that the public key really belongs to the signer. Distributing public keys naively is open to the man-in-the-middle attacks of \cref{sec:key-distribution}: a forged key in the right place lets the attacker read everything and sign anything. This section follows the slides from the public-key authority to certificates and the infrastructure that manages them.
+
+\tikzset{
+    pkparty/.style={draw, rounded corners, fill=themeblue!10, minimum width=1.8cm, minimum height=0.7cm, font=\small\bfseries},
+    pkmsg/.style={-{Stealth}, thick},
+    pklab/.style={font=\footnotesize, fill=white, inner sep=1.5pt},
+    pkcert/.style={draw, rounded corners, fill=themegreen!8, align=left, font=\footnotesize, text width=4.1cm, inner sep=5pt},
+}
+
+\subsection{The public-key authority}
+
+The first improvement over announcements and directories (\cref{tab:pk-distribution}) is an online \textbf{public-key authority}. Every participant knows the authority's public key $PU_{\mathrm{auth}}$, and the authority answers each request with a reply signed with its private key $PR_{\mathrm{auth}}$ (\cref{fig:pk-authority}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[pkparty] (A) at (0,0)  {$A$ (initiator)};
+    \node[pkparty] (P) at (6,0)  {Authority};
+    \node[pkparty] (B) at (12,0) {$B$ (responder)};
+    \foreach \n/\x in {A/0, P/6, B/12} \draw[themegray!60, dashed] (\n.south) -- (\x,-8.6);
+    \draw[pkmsg] (0,-1.0) -- node[pklab, above] {(1) $\mathit{Request} \concat T_1$} (6,-1.0);
+    \draw[pkmsg] (6,-2.1) -- node[pklab, above] {(2) $\Enc_{PR_{\mathrm{auth}}}(PU_b \concat \mathit{Request} \concat T_1)$} (0,-2.1);
+    \draw[pkmsg] (0,-3.3) -- node[pklab, above, pos=0.25] {(3) $\Enc_{PU_b}(ID_A \concat N_1)$} (12,-3.3);
+    \draw[pkmsg] (12,-4.4) -- node[pklab, above] {(4) $\mathit{Request} \concat T_2$} (6,-4.4);
+    \draw[pkmsg] (6,-5.5) -- node[pklab, above] {(5) $\Enc_{PR_{\mathrm{auth}}}(PU_a \concat \mathit{Request} \concat T_2)$} (12,-5.5);
+    \draw[pkmsg] (12,-6.7) -- node[pklab, above, pos=0.75] {(6) $\Enc_{PU_a}(N_1 \concat N_2)$} (0,-6.7);
+    \draw[pkmsg] (0,-7.9) -- node[pklab, above, pos=0.25] {(7) $\Enc_{PU_b}(N_2)$} (12,-7.9);
+\end{tikzpicture}
+\caption{Public-key distribution through an online authority. $\Enc_{PR_{\mathrm{auth}}}$ is the authority's signature (\enquote{encryption with the private key}); $T_1$, $T_2$ are timestamps, $N_1$, $N_2$ nonces.}
+\label{fig:pk-authority}
+\end{figure}
+
+\begin{enumerate}
+    \item $A$ asks the authority for $B$'s public key, with a timestamp $T_1$.
+    \item The authority replies with $PU_b$, the original request, and $T_1$, signed with $PR_{\mathrm{auth}}$. $A$ verifies the signature with $PU_{\mathrm{auth}}$, so the reply cannot be forged; the request shows that it was not altered; $T_1$ shows that it is not an old reply carrying a key $B$ has since replaced.
+    \item $A$ sends $B$ its identity and a nonce $N_1$, encrypted with $PU_b$.
+    \item[4--5.] $B$ obtains $PU_a$ from the authority in the same way.
+    \item[6.] $B$ returns $N_1$, which only $B$ could have decrypted, plus its own nonce $N_2$, encrypted with $PU_a$.
+    \item[7.] $A$ returns $N_2$, proving it could decrypt message 6: both sides are now authenticated.
+\end{enumerate}
+It works, but the authority must be online and contacted for every new correspondent: it is a bottleneck and a single point of failure, and it holds the directory, a valuable target. Certificates remove the need to contact the authority each time.
+
+\subsection{Digital certificates}
+
+\begin{definition}[Digital certificate]
+A \textbf{digital certificate} is a binding between a public key and identity information about its owner (the \emph{subject}), signed by a trusted issuer, the \textbf{certification authority} (CA). It is the form in which public keys are shared, and it works much like a physical identity document.
+\end{definition}
+
+A certificate has three properties:
+\begin{itemize}
+    \item any participant can \emph{read} it to learn the name and public key of its owner;
+    \item any participant can \emph{validate} it, i.e.\ check that it comes from the CA, is not counterfeit, and has not expired;
+    \item only the CA can \emph{create or update} it.
+\end{itemize}
+In the slides' notation, $A$'s certificate is $C_A = \Enc_{PR_{\mathrm{auth}}}(T \concat ID_A \concat PU_a)$: identity, key, and a time, signed by the CA. $A$ and $B$ obtain their certificates once, and from then on simply exchange them ($A$ sends $C_A$, $B$ sends $C_B$) and verify them offline with $PU_{\mathrm{auth}}$. An intruder can no longer impersonate someone by substituting a public key: a substituted key would need a certificate signed by the CA.
+
+\subsubsection{X.509}
+
+The standard format is \textbf{X.509} (\cref{tab:x509}). Identities are \emph{distinguished names} (DN), sequences of attributes such as
+\begin{center}
+\small\texttt{CN=Kenneth Lay, O=Enron, OU=Management, L=Houston, ST=Texas, C=US}
+\end{center}
+(common name, organisation, organisational unit, locality, state, country).
+
+\begin{table}[H]
+\centering
+\caption{Fields of an X.509 certificate.}
+\label{tab:x509}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Group & Fields & Purpose \\
+\midrule
+Subject & Distinguished name, public key & Whose key this is \\
+Issuer & Distinguished name, signature & Who vouches for it \\
+Validity & Not before, not after & When it may be used \\
+Administrative & Version, serial number & Identify the certificate (e.g.\ in revocation lists) \\
+Extensions & SAN, basic constraints, key usage, \dots & Further information and restrictions \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{remark}[Extensions that matter]
+Beyond the slides. The \emph{Subject Alternative Name} (SAN) lists the names the certificate is valid for (e.g.\ \texttt{www.example.com} and \texttt{example.com}); browsers check the SAN, not the CN. \emph{Basic constraints} say whether the subject is itself a CA (\texttt{CA:TRUE}) and may sign other certificates; a leaf certificate has \texttt{CA:FALSE}, otherwise any website owner could issue certificates for other domains. \emph{Key usage} and \emph{extended key usage} restrict what the key may do (sign certificates, authenticate a TLS server, sign code, \dots).
+\end{remark}
+
+\subsection{Certification authorities and PKI}
+
+A CA is responsible for the \emph{certification}, \emph{validation}, and \emph{revocation} of certificates. CAs can be commercial, governmental, or free, e.g.\ Let's Encrypt (run by ISRG, free and automated), DigiCert (which absorbed VeriSign, Symantec, GeoTrust, and Thawte), Sectigo (formerly Comodo CA), GoDaddy, the Italian Actalis, the Taiwanese government's GRCA.
+
+\begin{definition}[Public key infrastructure]
+The collection of hardware, software, people, policies, and protocols needed to create, manage, store, distribute, and revoke digital certificates.
+\end{definition}
+
+\paragraph{Certification.}
+\begin{enumerate}
+    \item The subject generates a key pair (private, public).
+    \item It asks a CA to certify the pair $(\mathit{subject\_ID}, \mathit{public\_key})$.
+    \item The CA verifies that the identifier really belongs to the subject.
+    \item The CA signs $(\mathit{subject\_ID}, \mathit{public\_key})$ with its private key.
+    \item The CA attaches the signature, creating the certificate.
+    \item The CA returns the certificate to the subject, and to anyone else who needs it.
+\end{enumerate}
+The private key never leaves the subject: the request (a \emph{certificate signing request}) contains only the public key and is signed with the private key, which proves possession.
+
+\paragraph{Identification} is the critical step, since the certificate is worth exactly as much as the check behind it.
+\begin{itemize}
+    \item \textbf{Out-of-band}: with traditional means (mail, fax, telephone, a face-to-face meeting with an identity document).
+    \item \textbf{In-band}: through the infrastructure itself, possible only for some kinds of identity, e.g.\ an e-mail address (the CA sends a code to it) or a domain name.
+\end{itemize}
+Beyond the slides: most web certificates are \emph{domain validated} (DV) in band. With the ACME protocol used by Let's Encrypt, the CA asks the applicant to publish a random token on the website or in the domain's DNS; only whoever controls the domain can do it. \emph{Organisation validated} (OV) and \emph{extended validation} (EV) certificates also check the organisation out of band.
+
+\subsection{Chains of trust}
+
+Certification is based on trust: users trust the CA to issue only certificates that correctly bind subjects to their keys. One CA for the whole world would be impractical, so most PKIs let one CA certify another: the first tells its users that they can trust what the second says in its certificates. This produces \textbf{certificate chains} of arbitrary length, in which each certificate is validated with the key of the next one up, until a \textbf{root} certificate is reached (\cref{fig:cert-chain}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth]
+    \node[pkcert] (r) at (0,0) {\textbf{Root CA}\\Subject: Root CA\\Issuer: Root CA (self-signed)\\Key: $PU_{\mathrm{root}}$\\\textit{in the trust store}};
+    \node[pkcert] (i) at (5.6,0) {\textbf{Intermediate CA}\\Subject: Intermediate CA\\Issuer: Root CA\\Key: $PU_{\mathrm{int}}$\\Signed with $PR_{\mathrm{root}}$};
+    \node[pkcert] (l) at (11.2,0) {\textbf{Leaf}\\Subject: www.example.com\\Issuer: Intermediate CA\\Key: $PU_{\mathrm{site}}$\\Signed with $PR_{\mathrm{int}}$};
+    \draw[pkmsg] (r) -- node[pklab, above] {signs} (i);
+    \draw[pkmsg] (i) -- node[pklab, above] {signs} (l);
+    \draw[pkmsg, themegray, dashed] (l.south) to[bend left=18] node[pklab, below] {verified with $PU_{\mathrm{int}}$, then $PU_{\mathrm{int}}$ verified with $PU_{\mathrm{root}}$} (r.south);
+\end{tikzpicture}
+\caption{A certificate chain: leaf (end user), intermediate, root. Validation walks the chain upwards until it reaches a root the verifier already trusts.}
+\label{fig:cert-chain}
+\end{figure}
+
+The CAs form a rooted tree, and the trust placed in a root cannot be established by cryptography: a root certificate is \emph{self-signed}, so its signature proves nothing about who owns it. It is trusted because it is pre-installed in the operating system or browser \emph{trust store}, and it gets there through reputation, experience, audits of operational competence, and other non-technical means. Anyone acting as a CA must be trusted to be both secure and correct. Root keys are usually kept offline, in hardware security modules, and day-to-day certificates are issued by intermediates, which can be revoked and replaced without touching the root.
+
+\subsection{Validation}
+
+Before using a certificate, the verifier checks that it
+\begin{itemize}
+    \item is \textbf{current}: the present time is between \enquote{not before} and \enquote{not after};
+    \item has been signed by a trusted root CA, or there is a \textbf{chain} leading to one;
+    \item has \textbf{not been tampered with} (every signature in the chain verifies);
+    \item has \textbf{not been revoked}.
+\end{itemize}
+(Beyond the slides, it also checks that the certificate is meant for this use: the name in the SAN matches the site, and the key usage allows it.) The first three checks can be done locally and offline, as the VerificaC19 app did for the Italian Green Pass, a scheme that ended in 2023: the app only needed the public keys of the issuing authorities. Checking revocation is harder.
+
+\paragraph{Inspecting a chain.} An exercise of the lab slides. On a real site:
+\begin{minted}{bash}
+openssl s_client -connect www.example.com:443 -servername www.example.com -showcerts </dev/null
+openssl x509 -in cert.pem -noout -text
+openssl verify -CAfile root.pem -untrusted inter.pem leaf.pem
+\end{minted}
+The first command prints the chain sent by the server, leaf first (usually leaf and one or two intermediates; the root is normally omitted, since the client must already have it). Saving each block to a file, the second shows issuer, validity, key type and size, SANs, the revocation URLs (under \emph{Authority Information Access} and \emph{CRL Distribution Points}), and the Certificate Transparency timestamps. The third validates the chain and prints \texttt{leaf.pem: OK}. On a small chain built for testing, leaving out \texttt{-untrusted inter.pem} gives \texttt{error 20 \dots{} unable to get local issuer certificate}: without the intermediate there is no path to the root. That is also what happens to clients when a misconfigured server sends only its leaf certificate.
+
+\subsection{Revocation}
+
+What if a private key is (or may be) compromised? Stop using it, notify the CA as soon as possible, and register a new key. The certificate must then be \textbf{revoked}: the binding between key and subject is broken, either because the private key has been compromised or because the subject's identifying information has changed (name, URL, e-mail address). Since certificates have been handed out, they cannot be physically recalled; revocation can only add them to a list of revoked certificates that verifiers must consult. Expiration dates limit the damage of keys that are never revoked.
+
+The check can be done
+\begin{itemize}
+    \item \textbf{online}, by querying the CA's current information (OCSP), or
+    \item \textbf{offline}, against a local copy of the revocation list, which may be out of date: a certificate revoked since the copy was made is still accepted.
+\end{itemize}
+
+\paragraph{Certificate revocation lists (CRL).} The CA periodically builds, signs, and distributes a list of the serial numbers of revoked certificates (X.509 defines its format), and verifiers check the latest one. Two problems: \emph{time granularity} (how often to publish: a certificate revoked just after a publication stays accepted until the next one) and \emph{size} (lists grow with every revocation). Remedies: split the CRL into groups (partitioned CRLs), or publish a complete \emph{base CRL} and then only the differences (\emph{delta CRLs}).
+
+\paragraph{Online Certificate Status Protocol (OCSP).} RFC 6960 (which obsoletes RFC 2560): the client asks a responder about one certificate and gets a signed answer: \emph{good}, \emph{revoked} (with time and reason), or \emph{unknown}. The answer is signed by the CA or by a responder the CA has delegated; that responder's own certificate is not itself checked through OCSP, which would loop forever. OCSP is fresher than a CRL, but every check is a network request that slows down the connection and tells the responder which sites the user is visiting. With \emph{OCSP stapling} (beyond the slides) the server itself fetches a recent signed answer and attaches it to the TLS handshake.
+
+\paragraph{Revocation in practice.} Revocation is weak: when a check fails or times out, browsers usually accept the certificate anyway (\emph{soft fail}), since otherwise any network glitch would break websites, and an attacker able to intercept traffic can also block the check. The industry has therefore moved to two other defences:
+\begin{itemize}
+    \item \textbf{Short lifetimes}: a certificate that expires soon needs no revocation. The maximum validity of public TLS certificates is being cut step by step, from 398 days to 200 (March 2026), 100 (March 2027), and 47 days (March 2029), which in practice requires automated renewal. Let's Encrypt, which always issued 90-day certificates, shut down its OCSP service in 2025.
+    \item \textbf{Push lists}: browsers download compact, frequently updated lists of revoked certificates (Firefox's CRLite and OneCRL, Chrome's CRLSets).
+\end{itemize}
+
+\subsection{Certificate Transparency}
+
+Certificate Transparency (CT) makes every issued certificate public. CAs submit certificates to public, \textbf{append-only logs} (built on Merkle trees, \cref{fig:merkle-tree}, so that nothing can be removed or changed without detection), and receive a signed timestamp to embed in the certificate; browsers require such proof that the certificate was logged. Domain owners can then \textbf{monitor} the logs and detect any certificate issued for their names without their knowledge. CT does not prevent misissuance, but it makes it visible, and quickly.
+
+\subsection{Case study: eMudhra, October 2026}
+
+\begin{itemize}
+    \item Eight intermediate CA certificates of eMudhra, an Indian CA (six for TLS, two for code signing), had P-384 private keys that were tiny numbers: 4, 56, 66, 115, 155, 156, 230, 237. Anyone could try the 256 smallest values and recover them \cite{mozilla2026emudhra}.
+    \item Whoever holds an intermediate CA key can issue certificates that browsers accept for \emph{any} domain: a valid certificate for \texttt{google.com} or for any bank.
+    \item Cause, according to eMudhra: a changed step in the key ceremony and a flawed script produced a second, weak set of keys in 2025, which was then used by mistake.
+    \item Response: browsers and operating systems blocked the keys between 17 and 22 October 2026 (Mozilla and Chrome first, then Microsoft and Apple); all eight intermediates were revoked, Mozilla removed the issuing root, and eMudhra is winding down its public TLS business.
+    \item CT made the abuse visible: 107{,}107 certificates signed with six of the keys were logged on 20--21 October, 106{,}050 of them proofs of concept for \texttt{google.com}.
+    \item Precedents: \textbf{DigiNotar} (2011), a Dutch CA that was hacked and issued fraudulent certificates (including one for \texttt{*.google.com} used to spy on users in Iran), was removed from all trust stores and went bankrupt; \textbf{Symantec} (2017--2018) was distrusted by browsers after repeated misissuance and sold its CA business to DigiCert.
+\end{itemize}
+The lesson goes back to \cref{sec:base-mechanisms}: the signature algorithm was fine, the key generation was not, and the whole web PKI is only as strong as the weakest of the hundreds of CAs that browsers trust.
+
+\begin{summary}
+\begin{itemize}
+    \item Public keys must be authentic. An online public-key authority signs each answer (with timestamps and nonces), but is a bottleneck; certificates are signed once and verified offline.
+    \item A certificate binds an identity to a public key and is signed by a CA. X.509 fields: subject (DN, key), issuer (DN, signature), validity, version and serial number, extensions (SAN, basic constraints, key usage).
+    \item PKI: hardware, software, people, policies, and protocols to create, manage, distribute, and revoke certificates. Identification can be out of band or in band (e-mail, domain validation with ACME).
+    \item Chains: leaf, intermediate, root; roots are self-signed and trusted because they are in the trust store, on non-technical grounds.
+    \item Validation: current, chain to a trusted root, signatures intact, not revoked (and the right name and usage).
+    \item Revocation: CRLs (granularity, size; base and delta CRLs) or OCSP (fresh but slow and privacy-leaking; stapling). In practice soft fail, so shorter lifetimes (47 days by 2029) and browser-pushed lists.
+    \item Certificate Transparency: public append-only logs that let domain owners detect misissuance. eMudhra (2026), DigiNotar (2011), Symantec (2017--2018).
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+In the public-key authority protocol (\cref{fig:pk-authority}), what attack would be possible if the authority's reply (message 2) did not contain $T_1$? And without $N_1$ in messages 3 and 6?
+\end{exercise}
+\begin{solution}
+Without $T_1$ an attacker could replay an old signed reply containing a key that $B$ has since replaced, perhaps because the old private key was compromised: $A$ would encrypt for a key the attacker controls. The signature would still verify, since the old reply is genuine. Without $N_1$, $A$ would have no proof that the party answering in message 6 is the holder of $PR_b$, who alone could decrypt message 3; an old message 6 could be replayed.
+\end{solution}
+
+\begin{exercise}
+List the checks a browser performs on the certificate chain presented by \texttt{https://www.example.com}, and say which ones can be done offline.
+\end{exercise}
+\begin{solution}
+For each certificate in the chain: the current time is within its validity period; its signature verifies with the public key of the next certificate up; the chain ends at a root in the browser's trust store; intermediates have \texttt{CA:TRUE}; the leaf's SAN contains \texttt{www.example.com} and its key usage allows TLS server authentication; and no certificate is revoked. All but revocation can be checked offline; revocation requires a fresh CRL or OCSP answer, or a list pushed in advance by the browser vendor.
+\end{solution}
+
+\begin{exercise}
+A CA publishes its CRL every day at midnight. A server's private key is stolen at 9:00, and the certificate is revoked at 10:00. Until when can the attacker impersonate the server to clients that check the CRL? To clients that soft-fail on OCSP? What changes with 47-day certificates?
+\end{exercise}
+\begin{solution}
+CRL clients accept the certificate until the next publication at midnight, i.e.\ for 14 hours after revocation (longer if they cache the CRL). Soft-fail OCSP clients can be fooled for as long as the attacker can block their OCSP requests, potentially until the certificate expires. A 47-day maximum lifetime bounds this worst case to at most 47 days instead of more than a year; it does not help in the first hours, which is why browsers also push revocation lists.
+\end{solution}
+
+\begin{exercise}
+Why is the compromise of an intermediate CA's key, as in the eMudhra case, as dangerous for website users as the compromise of a root key? How did Certificate Transparency help?
+\end{exercise}
+\begin{solution}
+Browsers accept any certificate whose chain leads to a trusted root, and the intermediate's certificate is signed by such a root, so whoever holds the intermediate's private key can issue certificates for any domain (unless name constraints restrict it), and every browser trusting the root accepts them. The attacker can then impersonate any site to users whose traffic it can intercept. CT does not prevent issuance, but every certificate trusted by browsers must be logged publicly, so the forged certificates (107{,}107 of them in this case) became visible within hours to the browser vendors and to the owners of the domains, who could react and block the keys.
+\end{solution}
+
+\begin{exercise}
+A root certificate is self-signed. Why is its signature worthless as a proof of identity, and what does the trust in it rest on?
+\end{exercise}
+\begin{solution}
+Anyone can generate a key pair and sign a certificate saying \enquote{I am Root CA X} with it: the signature only proves that the certificate's own key signed it. The trust rests on the root being pre-installed in the trust store by the operating system or browser vendor, after audits and checks on the CA's operations; in the end, on the reputation and track record of the CA and on the vendors' root programs. This is why misbehaving CAs (DigiNotar, Symantec, eMudhra) are removed from trust stores.
+\end{solution}

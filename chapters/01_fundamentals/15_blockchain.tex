@@ -1,0 +1,339 @@
+% Source: Romandini, 13_Introduction_Blockchain slides (written from the slides only).
+\section{Introduction to Blockchain}
+\label{sec:blockchain}
+
+A blockchain combines almost every tool of this chapter: hash functions and Merkle trees (\cref{sec:base-mechanisms}), digital signatures (\cref{sec:signatures}), elliptic-curve keys (\cref{sec:asymmetric}), and a way of reaching agreement among parties that do not trust each other. Three dates mark its history:
+\begin{itemize}
+    \item 1991: Haber and Stornetta, \emph{How to Time-Stamp a Digital Document} \cite{haber1991}, link documents in a hash chain so that no one can backdate one;
+    \item 2008: Satoshi Nakamoto, \emph{Bitcoin: A Peer-to-Peer Electronic Cash System} \cite{nakamoto2008};
+    \item 2014: Vitalik Buterin, the Ethereum white paper (smart contracts).
+\end{itemize}
+The technology went through a classic hype cycle: inflated expectations, disillusionment, and a slower climb towards the uses where it actually fits.
+
+\tikzset{
+    bcblock/.style={draw, rounded corners, fill=themeblue!6, text width=4.0cm, align=left, font=\footnotesize, inner sep=5pt},
+    bcarr/.style={-{Stealth}, thick},
+}
+
+\subsection{Why the blockchain? The trust problem}
+
+The modern economic system relies on \textbf{trusted third parties} to guarantee the authenticity of documents and the validity of transactions between parties that do not trust each other.
+\begin{itemize}
+    \item \textbf{Credit cards}: buyer and seller each open an account with a bank or broker, which confirms for every transaction that the buyer has the funds. Problems: commissions charged by every intermediary; timings that depend on banks' and offices' opening hours; data ownership (users do not really own their data or account, which are governed by the institutions' policies); errors, human or technical, outside the user's control.
+    \item \textbf{Cash}: full anonymity and no third party in the transaction. But someone must \emph{mint} the money, and be the authority on its validity, and it only works offline, hand to hand.
+    \item \textbf{Digital cash} attempts started in 1983 with David Chaum's blind signatures, but all of them, one way or another, needed a trusted third party to validate transactions and to create new coins.
+\end{itemize}
+The difficulty is that digital money is just bits, and bits can be copied (\cref{sec:signatures}): the same coin could be spent twice. A central ledger prevents this \emph{double spending} by recording who owns what. Bitcoin's idea is to eliminate the intermediary: keep the ledger, but make it replicated and maintained by everybody.
+
+\subsection{Background}
+
+\paragraph{Cryptography.} Confidentiality comes from encryption, integrity from hash functions, authenticity from digital signatures. In a PKI (\cref{sec:pki}) a public key identifies an entity through an X.509 certificate issued by a CA; in a public blockchain there are no CAs, and a public key \emph{is} the (pseudonymous) identity. Hash functions are used everywhere, thanks to determinism and the avalanche effect: SHA3-256 of \texttt{blockchain} begins with \texttt{45740502\dots}, of \texttt{Blockchain} with \texttt{94074fd5\dots}.
+
+\paragraph{Distributed systems.} Systems can be classified by two criteria:
+\begin{itemize}
+    \item \emph{computation}: \textbf{centralised} (all operations on a single node) or \textbf{distributed} (spread across nodes);
+    \item \emph{governance}: \textbf{centralised} (one node decides for all) or \textbf{decentralised} (every node takes part in decisions).
+\end{itemize}
+A \textbf{peer-to-peer} (P2P) network is one in which the participants' computers act both as clients and as servers, sharing resources directly without central coordination. The communication model can be \textbf{synchronous} (shared clock, an upper bound on message delivery time) or \textbf{asynchronous} (the weakest assumptions: no bound on delays). Nodes can fail in a \textbf{benign} way (crash, omission: they stop doing what they should) or a \textbf{Byzantine} way (they do arbitrary things, including lying, as an attacker would).
+
+\begin{definition}[Consensus]
+Distributed processes must agree on a single value (e.g.\ the next state of the system). Among the required properties:
+\begin{itemize}
+    \item \textbf{Agreement}: if a correct process decides a value, all correct processes eventually decide the same value;
+    \item \textbf{Termination}: every correct process eventually decides some value.
+\end{itemize}
+\end{definition}
+
+\begin{theorem}[Fischer, Lynch, Paterson, 1985 \cite{fischer1985}]
+No deterministic protocol solves consensus in an asynchronous system in which even one process may fail by crashing.
+\end{theorem}
+It is often said that blockchains solve consensus. As we will see, they do not: they relax one of the properties.
+
+\subsection{The Bitcoin blockchain}
+
+\begin{definition}[Blockchain]
+An append-only list of records, called \emph{blocks}, linked together with cryptography, typically maintained by a decentralised P2P network as a publicly distributed ledger. Trust is based on strong cryptographic primitives and protocols, and everyone has a copy of the ledger.
+\end{definition}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+    \node[bcblock] (b1) at (0,0) {\textbf{Block $n-1$}\\prev hash\\timestamp, target, nonce\\Merkle root of transactions};
+    \node[bcblock] (b2) at (5.4,0) {\textbf{Block $n$}\\prev hash $= H(\text{header}_{n-1})$\\timestamp, target, nonce\\Merkle root of transactions};
+    \node[bcblock] (b3) at (10.8,0) {\textbf{Block $n+1$}\\prev hash $= H(\text{header}_{n})$\\timestamp, target, nonce\\Merkle root of transactions};
+    \draw[bcarr] (b2.west) -- (b1.east);
+    \draw[bcarr] (b3.west) -- (b2.east);
+    \node[font=\footnotesize, text=themegray, below=0.15cm of b2] {each header points to the previous one by its hash};
+\end{tikzpicture}
+\caption{A chain of blocks linked by hash pointers. The transactions of each block are the leaves of a Merkle tree whose root is in the header (\cref{fig:merkle-tree}).}
+\label{fig:blockchain}
+\end{figure}
+
+\paragraph{The chain.} Each block contains the hash of the previous block (\cref{fig:blockchain}). Changing anything in a block changes its hash and breaks the link with the next block; to make the chain valid again, all following blocks must be recomputed. Since the chain is replicated across the network, the correct version can be found by asking the majority of the nodes, \emph{assuming that the majority is honest} (50\% + 1).
+
+\paragraph{The block} has a \textbf{header} and a \textbf{body}. The body is a Merkle tree whose leaves are the transactions; thanks to it, a node can prove that a transaction is in a block with a logarithmic number of hashes. The header contains the hash of the previous block, a Unix timestamp, the \emph{target} (a 256-bit value starting with many zero bits), a 32-bit \emph{nonce}, and the Merkle root. The hash of the block is computed over the header only (in Bitcoin, SHA-256 applied twice), but the header commits to all the transactions through the Merkle root.
+
+\subsubsection{Nakamoto consensus}
+
+Bitcoin operates in an asynchronous, distributed, and decentralised environment, where the number of nodes is unknown and they may be Byzantine. The only assumption is that the majority (of computing power) is honest. The peers must agree on the next block to append. Nodes that build blocks are \textbf{miners}: they receive transactions from clients, validate them, and try to produce a block. The intuition is that each block is generated by a \emph{randomly chosen} miner, and the randomness comes from a puzzle.
+
+\begin{definition}[Proof of work]
+To create a block, a miner must find a nonce such that the hash of the block header is less than or equal to the target. Since the hash behaves like a random function, the best algorithm is brute force: try nonces until one works. Solving the puzzle quickly requires a large amount of computing power; checking a solution takes one hash.
+\end{definition}
+
+Proof of work discourages Byzantine miners and denial of service: proposing blocks costs real resources. The miner who succeeds is rewarded with newly created bitcoins (the \emph{block reward}) plus the transaction fees. The reward halves every 210{,}000 blocks (about four years): it has been 3.125~BTC since April 2024 (one slide still shows the previous 6.25). Every 2016 blocks (about two weeks) the target is adjusted so that, whatever the total computing power, a block is found every 10 minutes on average.
+
+\paragraph{Forks.} A miner either solves the puzzle first, appends its block, and broadcasts it, or receives a valid block from another miner first, stops, and appends that. But in an asynchronous network a block may arrive at any moment, and two miners may solve the puzzle almost simultaneously: nodes then keep both branches, a \textbf{fork}. The rule is that the \textbf{longest chain} (strictly, the one with the most accumulated work) is the valid one. When one branch gets ahead, the blocks of the other become \emph{orphans}, and their transactions return to the pool of transactions to be included.
+
+\paragraph{Double spending.} An attacker can send two conflicting transactions spending the same coins to two different miners. A transaction that spends money already spent in the valid chain is rejected, and eventually only one of the two blocks remains in the longest chain. The rule for recipients is therefore to wait until the block containing their transaction is \enquote{buried} by about \textbf{6 further blocks} (about an hour): the probability that a fork overtakes it then becomes negligible.
+
+\paragraph{51\% attack.} An entity controlling more than half of the computing power can build a secret chain faster than everyone else, then publish it: being longer, it replaces the public chain, and with it the transactions the attacker wants to undo (e.g.\ a payment already used to obtain goods). In 2014 the mining pool Ghash.io briefly controlled more than 50\% of Bitcoin's computing power.
+
+\paragraph{Consensus, revisited.} Nakamoto consensus does not escape the FLP theorem; it relaxes agreement:
+\begin{itemize}
+    \item \textbf{Agreement is probabilistic}: at any moment there may be forks, and a recent block can still be replaced; the probability decreases with every block added on top.
+    \item \textbf{Termination}: for agreement to become ever more certain, the protocol can never stop. The main drawback of Bitcoin is that it must keep running to work.
+\end{itemize}
+Recall the distinction of \cref{sec:security-basics}: every property is a combination of a \emph{safety} property (\enquote{nothing bad happens}, here agreement) and a \emph{liveness} property (\enquote{something good eventually happens}, here termination) \cite{alpern1985}. In Bitcoin, \emph{liveness ensures safety}: new blocks keep coming, and it is their accumulation that makes past blocks final.
+
+\subsubsection{Nodes, identities, and wallets}
+
+\paragraph{Roles.} A Bitcoin node can be a \emph{wallet} (stores an identity), a \emph{network} node (receives and forwards blocks), a \emph{miner}, or a \emph{full blockchain} node (stores the whole chain, headers and transactions); real nodes combine them (the reference client Bitcoin Core does all of them; a lightweight wallet only some). A full node stores well over 600~GB and validates every block and fork. Other nodes keep only a recent part of the chain, or only block headers, and verify that a transaction is in a block with a Merkle proof (\enquote{simplified payment verification}).
+
+\paragraph{Identities and addresses.} An identity is a public key: a pseudonymous identifier, not a name. But reusing a key lets anyone track all its activity on the public chain and possibly link it to a real person, and nodes that relay a transaction can log the IP address it came from. Real anonymity requires changing key frequently and masking the IP address. Transactions are made between \textbf{addresses}, derived from the public key: version byte \texttt{0x00}, then the fingerprint $\mathrm{RIPEMD160}(\mathrm{SHA256}(\mathit{pk}))$, then a 4-byte checksum (the first bytes of a double SHA-256 of the preceding bytes, to catch typing errors), all encoded in Base58, e.g.\ \texttt{1BpCB9Qzm2LePrQKu6RzASzEKvjc6utsQQ}. Keys and signatures use elliptic curves (secp256k1), not RSA (\cref{sec:asymmetric}).
+
+\paragraph{Wallets.} A wallet is a device or program for holding and sending bitcoins. It contains the \textbf{private keys} needed to sign transactions, \emph{not} the coins, which exist only as entries on the blockchain. Whoever knows a private key controls the coins of its address, and losing the key means losing them: there is no bank to call. This is why wallet backups are split with secret sharing (\cref{sec:secret-sharing}).
+
+\subsubsection{Transactions}
+
+A transaction transfers value and is broadcast to the network to be collected into blocks. There are two kinds: transfers of existing money between identities, and the \textbf{coinbase} transaction, the first of each block, which creates new money for the miner (the block reward plus all the fees of the block) and therefore has no inputs.
+
+Bitcoin does not store \enquote{coins} or balances: it stores every transaction. As with cash passing from hand to hand, the history of every amount can be traced back to its creation; to prove that I may spend some bitcoins, I point to a transaction on the blockchain that paid them to me.
+\begin{itemize}
+    \item \textbf{Inputs} reference earlier transaction outputs that prove possession of the coins.
+    \item \textbf{Outputs} name the receivers' addresses and amounts (possibly including myself, for the change).
+    \item Inputs minus outputs is unclaimed: it is the \textbf{fee} that goes to the miner, an incentive to include the transaction (quickly).
+\end{itemize}
+An output that has not been spent yet is an \textbf{unspent transaction output} (UTXO); the sum of all UTXOs is the total supply at that moment.
+
+\paragraph{Scripts.} Inputs and outputs actually contain small programs in Bitcoin's (deliberately limited) scripting language. The output's \emph{locking script} (\texttt{scriptPubKey}) says what is needed to spend it; the spending input's \emph{unlocking script} (\texttt{scriptSig}) provides it. The common \emph{pay to public key hash} (P2PKH) output is
+\begin{center}
+\small\texttt{OP\_DUP OP\_HASH160 <address hash> OP\_EQUALVERIFY OP\_CHECKSIG}
+\end{center}
+and is unlocked by \texttt{<signature> <public key>}. Running the two together, the public key is duplicated and hashed, the hash must equal the one in the address, and the signature must verify with that public key over the spending transaction. \emph{Pay to script hash} (P2SH) generalises this, e.g.\ for multi-signature outputs (\enquote{2 of 3 keys must sign}). The security rests on two hard problems: computing the public key from the address (a hash preimage) and the private key from the public key (an elliptic-curve discrete logarithm).
+
+\paragraph{Some numbers.} There will never be more than 21 million bitcoins: the limit is written in the protocol, and about 20 million are already in circulation. Mining difficulty has grown by many orders of magnitude, and so has energy consumption, comparable to that of a mid-sized country according to the Cambridge Bitcoin Electricity Consumption Index. In May 2021 Chinese authorities ordered a crackdown on crypto mining and trading, which moved a large share of mining elsewhere.
+
+\paragraph{A toy blockchain.} Beyond the slides: a few lines of Python with the essential mechanisms (hash links, Merkle roots, proof of work), with \enquote{the hash starts with four hexadecimal zeros} as target.
+
+\begin{minted}{python}
+import hashlib, json
+
+def h(data):
+    return hashlib.sha256(data).hexdigest()
+
+def merkle_root(txs):
+    level = [h(tx.encode()) for tx in txs]
+    while len(level) > 1:
+        if len(level) % 2:
+            level.append(level[-1])
+        level = [h((a + b).encode()) for a, b in zip(level[::2], level[1::2])]
+    return level[0]
+
+def block_hash(header):
+    return h(json.dumps(header, sort_keys=True).encode())
+
+def mine(prev_hash, txs, zeros):
+    header = {"prev": prev_hash, "root": merkle_root(txs), "nonce": 0}
+    while not block_hash(header).startswith("0" * zeros):
+        header["nonce"] += 1
+    return {"header": header, "txs": txs}
+
+def valid(chain, zeros):
+    prev = "0" * 64
+    for block in chain:
+        header = block["header"]
+        if header["prev"] != prev or header["root"] != merkle_root(block["txs"]):
+            return False
+        prev = block_hash(header)
+        if not prev.startswith("0" * zeros):
+            return False
+    return True
+
+chain, prev = [], "0" * 64
+for txs in (["coinbase -> Alice 50"], ["Alice -> Bob 10", "Alice -> Carol 5"]):
+    chain.append(mine(prev, txs, 4))
+    prev = block_hash(chain[-1]["header"])
+
+print([b["header"]["nonce"] for b in chain], prev[:16])
+print(valid(chain, 4))
+chain[0]["txs"][0] = "coinbase -> Mallory 50"
+print(valid(chain, 4))
+\end{minted}
+
+Each block needs on average $16^4 = 65{,}536$ attempts (the nonces found are a few tens of thousands); the last hash starts with \texttt{0000}. The chain is valid (\texttt{True}); after rewriting the first transaction it is not (\texttt{False}): the Merkle root no longer matches, and fixing it would change the block's hash, break the link from the next block, and require mining every following block again, faster than the rest of the network.
+
+\subsection{Beyond Bitcoin}
+
+Bitcoin has open problems. Non-technical: huge storage and energy consumption, and concentration of computing power in a few large pools. Technical: \emph{limited scalability} (the number of transactions per second is bounded by block size and block time, around seven per second), \emph{low efficiency} (at least an hour to confirm a transaction safely), \emph{poor data expressiveness} (only economic transactions; relationships between data are hard to express), and \emph{lack of standardisation} among the many cryptocurrencies. From 2014, starting with \textbf{Ethereum} (white paper 2014, network launched 2015), new platforms introduced smart contracts, decentralised applications, DAOs, NFTs, and oracles. Beyond the slides: in 2022 Ethereum replaced proof of work with \emph{proof of stake}, where block creators are chosen in proportion to the currency they lock as a deposit and lose if they cheat, cutting its energy consumption by more than 99\%.
+
+\subsubsection{Smart contracts}
+
+Bitcoin's scripting language is deliberately not Turing-complete, which limits what it can do.
+
+\begin{definition}[Smart contract]
+A computer program stored and executed on a blockchain platform. Every node has a copy of it; it has an address, functions that can be invoked, and an internal state (e.g.\ the value of a variable), which can always be recomputed by re-executing the whole history of its transactions.
+\end{definition}
+
+With the blockchain as enabler, a smart contract needs no intermediary to execute, runs in a distributed and fault-tolerant way, and is immutable with its data, with full traceability and complete history of its state. In the slides' example, a contract records the owner of a car: when the current owner (Nicolò) sends a transaction invoking \texttt{TransferOwnership} to Marco, every node executes it, and the recorded owner becomes Marco.
+
+\paragraph{Lifecycle.} The contract is first \emph{deployed} on the blockchain, which distributes it to all nodes. To execute a function, a transaction is sent to the contract's address with the function name and arguments. Each node executes it independently on its local copy, and all must obtain the same result to reach consensus; otherwise the transaction is invalid. (On Ethereum each computation step costs \emph{gas}, paid by the caller, which also stops infinite loops.)
+
+\paragraph{Limitations.}
+\begin{itemize}
+    \item Execution must be \textbf{deterministic}, or nodes would disagree: no local random numbers, clocks, or network calls.
+    \item Contrary to what is often said, a smart contract cannot \emph{execute itself}: something must send it a transaction.
+    \item Immutability prevents adding features or fixing bugs: an upgrade means deploying a new contract and convincing everybody to use it.
+    \item The code is public, so anyone can study it and exploit its vulnerabilities.
+    \item A contract can only use data already on the blockchain.
+\end{itemize}
+
+\paragraph{Decentralised applications} (dApps) combine one or more smart contracts (the backend logic), a frontend (e.g.\ a web interface), and the blockchain as decentralised storage. Benefits: zero downtime, privacy (no real-world identity needed), censorship resistance, data integrity, and verifiable behaviour (public, deterministic code). Drawbacks: hard maintenance, poor performance and scalability, and dependence on external services, which cancels many of the advantages.
+
+\subsubsection{DAOs and The DAO}
+
+A \textbf{decentralised autonomous organisation} (DAO) is an organisation whose rules are encoded in smart contracts, controlled by its members with no central leadership: an instance of \emph{algocracy}, algorithms applied to rules and their enforcement.
+
+\begin{example}[The DAO, 2016]
+\emph{The DAO} was an investor-directed venture fund on Ethereum. It raised about \$150 million in Ether by selling tokens (100 tokens per Ether, one token one vote). Token holders proposed investments; if a proposal reached a 20\% quorum, the funds were sent to the contract of the project, and profits flowed back into the fund. To protect minorities who disagreed with a project, a \texttt{splitDAO()} function let them move their funds into a \enquote{child DAO}. That function had a \emph{recursive call} vulnerability: it sent the Ether to the caller \emph{before} updating the caller's balance. On 8 June 2016 an attacker created a split proposal (\enquote{lonely, so lonely}) that nobody else joined, and a contract that, when it received the Ether, called the split function again, before the balance had been set to zero. About \$50 million were drained (they were locked for a waiting period before they could be withdrawn). The attacker had arguably broken no law: the contract did what its code said. The Ethereum community \emph{hard-forked} the blockchain to move the funds to a recovery address; those who rejected the fork kept the original chain, now \emph{Ethereum Classic}.
+\end{example}
+
+\begin{remark}
+The vulnerability is now called \emph{reentrancy}, and the standard defence is the \emph{checks--effects--interactions} order: verify the conditions, update the contract's own state (set the balance to zero), and only then interact with external contracts (send the money). The fork also showed that \enquote{code is law} and immutability give way when the stakes are high enough, which is itself a trust issue.
+\end{remark}
+
+\paragraph{NFTs.} A non-fungible token is a non-interchangeable unit of data on a blockchain, mostly used to represent a (physical or digital) item and to claim a public certificate of authenticity or ownership, created and transferred by transactions. The legal rights it conveys can be unclear. NFT trading exceeded \$17 billion in 2021, from \$82 million in 2020.
+
+\paragraph{Oracles} connect blockchains to the outside world, so that smart contracts can act on real-world inputs (prices, weather, delivery confirmations). They reintroduce exactly what the blockchain wanted to avoid: a trusted single point of failure, a bottleneck, and a target for man-in-the-middle attacks. A typical use is \emph{randomness}: since a contract cannot generate random numbers deterministically, it asks an oracle, which returns the same value to all nodes executing the function.
+
+\paragraph{Use cases and legal value.} Notarisation of documents, deeds, and registries; chain of custody of evidence; online dispute resolution; registration of intellectual property and proof of priority; compliance and audit (KYC/AML). In Italy, Law 12/2019 (art.~8-ter) gives data stored on a distributed ledger the legal effect of an electronic time stamp under eIDAS. eIDAS~2.0 introduces the \textbf{qualified electronic ledger} as a trust service, with a rebuttable presumption of the integrity and chronological order of its entries; qualification is optional, but without it the holder must prove integrity. An open issue is the tension between immutability and the GDPR rights to rectification and erasure (a common approach is to keep personal data off the chain and store only their hashes on it).
+
+\subsection{Distributed ledgers: a taxonomy}
+
+A \textbf{distributed ledger} is a replicated, shared, and synchronised database spread across multiple sites, maintained by a P2P network with a consensus algorithm. A blockchain is one kind, organised as a chain of blocks; the IOTA Tangle, designed for the Internet of Things, is another, a directed acyclic graph in which each transaction is a vertex.
+
+\begin{itemize}
+    \item \textbf{Permissionless}: open to anyone, to interact and to take part in consensus; fully decentralised among unknown parties. Pros: broad decentralisation, transparency, censorship resistance, resilience. Cons: energy, slowness and poor scalability, less privacy and control over information.
+    \item \textbf{Permissioned}: closed; designated parties interact and validate; partially decentralised. Pros: privacy, customisation, speed and scalability. Cons: limited decentralisation, weaker security (fewer parties to subvert), less transparency to outside oversight.
+    \item \textbf{Tokenised} ledgers manage a digital asset (token); \textbf{tokenless} ones offer no asset as incentive and charge nothing for deploying contracts, and are typically permissioned, since trust is established when participants register.
+\end{itemize}
+Tokens serve two purposes: an \emph{economic incentive} to take part honestly in consensus (only relevant in decentralised systems: a miner who mines outside the consensus wastes energy and loses the reward), and protection against \emph{spam and DoS}, since every operation costs a fee and flooding the ledger becomes expensive.
+
+\begin{table}[H]
+\centering
+\caption{The taxonomy at a glance (from the slides).}
+\label{tab:dlt-taxonomy}
+\small
+\begin{tabular}{@{}ll ccc@{}}
+\toprule
+ & & \multicolumn{2}{c}{Distributed} & Localised \\
+\cmidrule(lr){3-4}\cmidrule(l){5-5}
+ & & Decentralised & Centralised & Centralised \\
+\midrule
+Permissioned & Tokenised & \multirow{2}{*}{\emph{pointless}} & \emph{application unclear} & WoW Gold \\
+ & Tokenless & & Financial applications & Wikipedia \\
+\midrule
+Permissionless & Tokenised & Bitcoin, Ethereum & Ripple, Stellar & \emph{application unclear} \\
+ & Tokenless & \multicolumn{3}{c}{\emph{subject to spam}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Hyperledger Fabric}
+
+\textbf{Hyperledger Fabric} is a permissioned distributed ledger, originally developed by IBM and now an open-source project of the Linux Foundation's Hyperledger umbrella, aimed at enterprise use. Key features: permissioned architecture, high modularity, pluggable consensus, smart contracts in general-purpose languages (Go, Java, Node.js), low latency, and a flexible endorsement model for agreement among organisations. Its elements:
+\begin{itemize}
+    \item \textbf{Channel}: a private \enquote{subnet} between two or more members for confidential transactions; every transaction runs on a channel, where each party must be authenticated and authorised. An organisation can join several channels.
+    \item \textbf{Client}: an application that interacts with the network.
+    \item \textbf{Peer}: a node that commits transactions and keeps the state and a copy of the ledger. \emph{Committing peers} only keep the ledger; \emph{endorsing peers} also execute and endorse transactions for a given chaincode, according to its \textbf{endorsement policy} (which peers must agree on a transaction's result before it can be added to the ledger).
+    \item \textbf{Orderer}: the service that orders transactions, builds blocks, and distributes them to the peers of the channel.
+    \item \textbf{Certificate authority}: manages the members' X.509 certificates (\cref{sec:pki}): identities are known, which is what \enquote{permissioned} means.
+    \item \textbf{Chaincode}: the package of related smart contracts that an administrator deploys, together with its endorsement policy.
+    \item \textbf{Ledger}: on each peer, the \emph{blockchain} (the history of all transactions of the channel) and the \emph{world state} (the current value of every variable, for fast reads).
+\end{itemize}
+
+\paragraph{Transaction flow} (execute, order, validate):
+\begin{enumerate}
+    \item the client sends a transaction proposal to the endorsing peers required by the policy;
+    \item each endorser \emph{simulates} the transaction on its copy of the state, without updating the ledger;
+    \item and returns the signed result (the endorsement) to the client;
+    \item the client submits the endorsed transaction to the orderer;
+    \item the orderer puts transactions in order and creates a new block;
+    \item the block is distributed to all peers, which check the endorsements against the policy and that the data read during simulation have not changed in the meantime, then commit it;
+    \item the client is notified of the outcome.
+\end{enumerate}
+
+\paragraph{Consensus.} Fabric relies on \emph{deterministic} consensus: a block validated by a peer is final and correct, with no forks. Determinism comes from the ordering service, normally \textbf{Raft}, which is crash fault tolerant (not Byzantine fault tolerant: it assumes the orderers do not lie; recent Fabric versions also offer a BFT ordering service). Have we solved consensus? No: Fabric has \emph{deterministic agreement but probabilistic termination}. By the FLP theorem, in an asynchronous network Raft may in principle keep electing leaders without deciding; in practice it terminates with high probability. Bitcoin makes the opposite choice: it always makes progress, but agreement is only probabilistic.
+
+\begin{summary}
+\begin{itemize}
+    \item Blockchains remove the trusted third party from digital money: a replicated, append-only ledger prevents double spending.
+    \item Background: distributed vs decentralised; synchronous vs asynchronous; benign vs Byzantine faults; consensus requires agreement and termination, and FLP makes it impossible deterministically with one crash in an asynchronous system.
+    \item Bitcoin: blocks linked by hash pointers, transactions in a Merkle tree, header with previous hash, timestamp, target, nonce, Merkle root. Proof of work (hash below target, target retuned every 2016 blocks for 10-minute blocks), longest-chain rule, 6 confirmations, 51\% attack.
+    \item Nakamoto consensus: probabilistic agreement and endless operation; liveness ensures safety.
+    \item Identity = public key (pseudonymous); addresses from RIPEMD160(SHA256(pk)); wallets hold private keys, not coins. Transactions spend UTXOs through locking and unlocking scripts; coinbase creates new coins (3.125 BTC per block today, 21 million in total).
+    \item Smart contracts: deterministic programs on the blockchain, immutable and public (The DAO reentrancy, 2016, and the Ethereum fork). dApps, DAOs, NFTs, oracles (trusted again).
+    \item Ledgers are permissionless or permissioned, tokenised or tokenless. Hyperledger Fabric: permissioned, channels, endorsing peers and policies, orderer (Raft), execute--order--validate; deterministic agreement but probabilistic termination.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+An attacker wants to change a transaction in block $n$ of a blockchain whose current length is $n + 5$. What must be recomputed, and why does this require more than half of the network's computing power?
+\end{exercise}
+\begin{solution}
+Changing the transaction changes the Merkle root, hence block $n$'s header and hash; block $n+1$ points to the old hash, so it must be updated and re-mined, which changes its hash, and so on: blocks $n$ to $n+5$ must all be mined again. Meanwhile the honest network keeps extending the public chain, and nodes follow the longest chain. With less than half of the computing power, the attacker falls further behind on average and the probability of ever catching up decreases exponentially with the number of blocks to redo; with more than half, the attacker eventually overtakes (the 51\% attack).
+\end{solution}
+
+\begin{exercise}
+(a) With the toy target \enquote{the hash starts with $d$ hexadecimal zeros}, how many attempts are needed on average? (b) If the total computing power of the Bitcoin network suddenly doubles, what happens to the block interval, and what does the protocol do?
+\end{exercise}
+\begin{solution}
+(a) Each hexadecimal digit is zero with probability $1/16$, so about $16^d = 2^{4d}$ attempts; checking a solution takes one hash. (b) Blocks arrive about every 5 minutes instead of 10, until the next adjustment (every 2016 blocks, which now takes about one week instead of two); then the target is lowered so that the expected work doubles and the interval returns to 10 minutes.
+\end{solution}
+
+\begin{exercise}
+A shop ships goods as soon as a payment transaction appears in a block. Describe a double-spending attack, and the rule that prevents it.
+\end{exercise}
+\begin{solution}
+The attacker pays the shop in a transaction $T_1$ and, in parallel, prepares a conflicting transaction $T_2$ that sends the same coins back to itself, mined on a separate branch. When $T_1$ appears in a block, the shop ships; if the attacker's branch becomes longer (by luck in a fork, or with a large share of the computing power), the block with $T_1$ is orphaned and $T_1$ becomes invalid, since the coins were spent by $T_2$. The rule is to wait until the block with the payment is buried under about 6 blocks: the probability of a reversal then becomes negligible for an attacker with a minority of the computing power.
+\end{solution}
+
+\begin{exercise}
+Alice controls two UTXOs of 0.7 and 0.5 BTC. She pays Bob 1.0 BTC and offers a fee of 0.01 BTC. Write the inputs and outputs of the transaction. What happens to any amount she forgets to send back to herself?
+\end{exercise}
+\begin{solution}
+Inputs: the two UTXOs, 1.2 BTC in total (each unlocked with Alice's signature and public key). Outputs: 1.0 BTC to Bob's address and 0.19 BTC of change to an address of Alice's. Inputs minus outputs $= 1.2 - 1.19 = 0.01$ BTC, the fee, which the miner collects in the coinbase transaction. Any amount not assigned to an output is also part of the fee: forgetting the change output would give 0.2 BTC to the miner.
+\end{solution}
+
+\begin{exercise}
+In a Hyperledger Fabric network with two endorsing organisations, a chaincode function returns \texttt{Math.random()}. What happens when a client invokes it, and why? What does the general rule for smart contracts say?
+\end{exercise}
+\begin{solution}
+Each endorsing peer simulates the transaction independently and obtains a different random number, so the two endorsements contain different results. The endorsement policy requires both organisations to agree on the result, so the transaction cannot satisfy it and is not committed. Smart contracts must be deterministic, since all nodes must reach the same result; randomness must come from outside, e.g.\ from an oracle or as an input of the transaction.
+\end{solution}
+
+\begin{exercise}
+Explain the reentrancy flaw of The DAO in terms of the order of operations in \texttt{splitDAO()}, and give the fix.
+\end{exercise}
+\begin{solution}
+The function sent the caller's Ether \emph{before} setting the caller's balance to zero. The attacker's receiving contract, when it got the Ether, called \texttt{splitDAO()} again; the balance was still unchanged, so the checks passed and the Ether was sent again, recursively. The fix is the checks--effects--interactions order: check the conditions, update the state (zero the balance), and only then make the external call; a re-entrant call then finds a zero balance.
+\end{solution}
+
+\begin{exercise}
+A consortium of hospitals wants a shared, tamper-evident log of who accessed which patient record. Would you choose a permissionless or a permissioned ledger? What should be stored on it, given the GDPR?
+\end{exercise}
+\begin{solution}
+Permissioned (e.g.\ Fabric): the participants are known organisations, the data are confidential, throughput and finality matter, and no token incentive is needed; channels can restrict visibility. Personal data should not be written on the ledger, since it cannot be erased or rectified: store the records off-chain and put on the ledger only hashes, timestamps, and pseudonymous identifiers, which prove integrity and order and can be made meaningless by deleting the off-chain data.
+\end{solution}

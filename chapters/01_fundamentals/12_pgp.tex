@@ -1,0 +1,215 @@
+% Source: Romandini, 10_PGP slides (written from the slides only);
+%         ExMaster exercise slides (GnuPG commands).
+\section{Pretty Good Privacy}
+\label{sec:pgp}
+
+\textbf{PGP} (Pretty Good Privacy) is a program, written by Phil Zimmermann in 1991, that provides confidentiality and authentication for e-mail and file storage. It puts together everything seen so far: hashes, signatures, symmetric and public-key encryption, hybrid encryption, and a way of distributing public keys without a central authority.
+
+Its success came from a few choices:
+\begin{itemize}
+    \item it selects the best available cryptographic algorithms, ones that have survived public review, as building blocks;
+    \item it integrates them into a general-purpose application, independent of operating system and processor;
+    \item the package, its documentation and source code were freely available, and an agreement with a company provided a compatible, low-cost commercial version for users who wanted vendor support;
+    \item it was not developed by any government or standards organisation, which made it attractive to users who did not trust them.
+\end{itemize}
+PGP became an Internet standard, \textbf{OpenPGP}, first published by the IETF in 1998, most recently as RFC 9580 (2024). Its most widely used implementation is the free GnuPG (\texttt{gpg}). Beyond the slides: in the early 1990s strong cryptography was classified as a munition in the United States, and Zimmermann was under criminal investigation for three years because PGP had spread abroad over the Internet; the source code was later exported legally as a printed book.
+
+\subsection{PGP services}
+
+\begin{table}[H]
+\centering
+\caption{PGP services. The algorithms are those of the slides (classic PGP); the last column shows current OpenPGP practice.}
+\label{tab:pgp-services}
+\begin{tabularx}{\textwidth}{@{}l X X X@{}}
+\toprule
+Function & Classic algorithms & Description & Today \\
+\midrule
+Digital signature & DSS/SHA or RSA/SHA & The SHA-1 hash of the message is signed with the sender's private key (DSS or RSA) and attached to the message & SHA-256/512 with RSA or EdDSA (Ed25519) \\
+Message encryption & CAST, IDEA or 3DES with Diffie--Hellman (ElGamal) or RSA & The message is encrypted with a one-time session key, which is encrypted with the recipient's public key & AES with RSA or ECDH (X25519), in an authenticated mode \\
+Compression & ZIP & The message is compressed for storage or transmission & ZIP, ZLIB \\
+E-mail compatibility & Radix-64 & The binary result is converted into ASCII characters & Unchanged (\enquote{ASCII armour}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Authentication} is hash-then-sign (\cref{sec:signatures}):
+\begin{enumerate}
+    \item the sender computes a 160-bit SHA-1 hash of the message;
+    \item the hash is encrypted with RSA using the sender's private key, and the result is prepended to the message;
+    \item the receiver decrypts it with the sender's public key, recovering the hash;
+    \item the receiver hashes the message itself and compares: if the two match, the message is accepted as authentic.
+\end{enumerate}
+PGP also supports \emph{detached signatures}, stored and sent separately from the document: useful when several people sign the same document, to sign software releases, or to keep a log of signatures.
+
+\paragraph{Confidentiality} is hybrid encryption (\cref{sec:rsa-practice}):
+\begin{enumerate}
+    \item the sender generates a random 128-bit number, the \emph{session key}, used for this message only;
+    \item the message is encrypted with CAST-128 (or IDEA or 3DES) under the session key;
+    \item the session key is encrypted with RSA under the recipient's public key and prepended to the message;
+    \item the receiver decrypts the session key with its private key,
+    \item and then the message with the session key.
+\end{enumerate}
+A fresh key for every message, carried inside the message, fits e-mail perfectly: it is store-and-forward, so the recipient may be offline, and an interactive key exchange such as Diffie--Hellman (\cref{sec:key-distribution}) would be impossible. Encrypting a message to several recipients only requires encrypting the same session key once per recipient.
+
+\paragraph{Both services.} The sender first signs the plaintext and prepends the signature, then encrypts message and signature together with a session key, and finally encrypts the session key with the recipient's public key. Since the signature is encrypted too, it does not leak the hash of the message (\cref{sec:signatures}). The other pitfall discussed there, surreptitious forwarding, does apply: Davis's paper \cite{davis2001} uses PGP as one of its examples.
+
+\paragraph{Compression} happens after signing and before encryption.
+\begin{itemize}
+    \item \emph{After signing}: it is preferable to sign the uncompressed message, so that one can store just the message and the signature and verify them later. A signature on a compressed document would force one either to keep the compressed version, or to recompress the message at verification time, and different versions of the compression program may not produce exactly the same bytes.
+    \item \emph{Before encryption}: it saves space for transmission and storage, and it must come first, since ciphertext looks random and cannot be compressed. It also removes redundancy from the plaintext.
+\end{itemize}
+
+\paragraph{E-mail compatibility.} Encryption produces arbitrary bytes, but e-mail historically carried only printable text. \textbf{Radix-64} (Base64) maps every 3 bytes to 4 printable characters, 6 bits each, so the message grows by a third (\enquote{ASCII armour}, the \texttt{-----BEGIN PGP MESSAGE-----} blocks).
+
+\begin{table}[H]
+\centering
+\caption{Transmission and reception of a PGP message. $Z$ is compression, $R64$ the radix-64 conversion, $K_s$ the session key, $PU_b$/$PR_b$ the recipient's keys.}
+\label{tab:pgp-pipeline}
+\begin{tabularx}{\textwidth}{@{}l X X@{}}
+\toprule
+Step & Sender & Receiver \\
+\midrule
+1 & $X \leftarrow$ file & $X \leftarrow R64^{-1}[X]$ \\
+2 & if signing: $X \leftarrow \text{signature} \concat X$ & if encrypted: $K_s \leftarrow \Dec(PR_b, \Enc(PU_b, K_s))$, then $X \leftarrow \Dec(K_s, \Enc(K_s, X))$ \\
+3 & $X \leftarrow Z(X)$ & $X \leftarrow Z^{-1}(X)$ \\
+4 & if encrypting: $X \leftarrow \Enc(PU_b, K_s) \concat \Enc(K_s, X)$ & if signed: strip the signature from $X$ and verify it \\
+5 & $X \leftarrow R64[X]$ & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Keys}
+
+PGP uses four kinds of keys: \textbf{one-time session keys} (symmetric), \textbf{public keys}, \textbf{private keys}, and \textbf{passphrase-based symmetric keys}. The last ones protect private keys at rest: a private key is stored encrypted with a key derived from the user's passphrase (\cref{sec:crypto-lab}), so a stolen key file is useless without the passphrase.
+
+\paragraph{Key identifiers.} A user may have several key pairs, so the receiver must know which one was used. Sending the whole public key with every message would waste space; instead each key has a \textbf{key ID}, its least significant 64 bits, unique with very high probability among the keys of a user. The key ID is carried in the encrypted message (which of the recipient's keys encrypted the session key) and in every signature (which of the sender's keys signed).
+
+\begin{remark}[Key IDs are not fingerprints]
+Beyond the slides. In current OpenPGP the key ID is the last 64 bits of the key's \emph{fingerprint}, a hash of the public key; the full fingerprint (160 bits or more) is what users should compare to verify a key. Short 32-bit IDs, once common, are useless for identification: in 2014 the \enquote{Evil 32} project generated keys whose 32-bit IDs matched those of thousands of real keys. Matching a given 32-bit ID takes about $2^{32}$ attempts (a second-preimage search, \cref{sec:base-mechanisms}), which the project did in seconds per key on a GPU.
+\end{remark}
+
+\paragraph{Key rings.} Each user keeps two data structures: a \textbf{private key ring} with its own key pairs (private keys encrypted under the passphrase), and a \textbf{public key ring} with the public keys of the other users it knows, together with the trust information described below.
+
+\subsection{The web of trust}
+
+PGP certificates contain: version number, public key, key characteristics (algorithm, length, creation and expiration dates), the user's identity (name, e-mail address, possibly a photo), a \emph{self-signature} (the public key signed with its own private key, which proves that the owner holds the private key), the preferred symmetric algorithms, and \textbf{additional signatures} by other users.
+
+Instead of certification authorities, PGP adopts the \textbf{web of trust}:
+\begin{itemize}
+    \item there is \emph{no centralised entity}: individuals sign each other's public keys, typically after meeting and checking an identity document and the key's fingerprint (\enquote{key signing parties});
+    \item these signatures are certificates, stored with the keys in the key rings;
+    \item PGP computes a trust level for each public key, depending on the number of signatures on it and on the trust assigned to each signer.
+\end{itemize}
+Two notions must be kept apart:
+\begin{itemize}
+    \item \textbf{key legitimacy}: am I sure that this key belongs to the person named in it?
+    \item \textbf{owner trust}: do I trust this person to check identities carefully before signing other people's keys? This is assigned by each user (unknown, none, marginal, full) and is personal, not shared.
+\end{itemize}
+A key is legitimate if the user signed it personally, or if it is signed by enough trusted introducers. In GnuPG's default rule, one signature by a fully trusted key, or three by marginally trusted ones, suffice.
+
+\begin{example}[Zimmermann's trust diagram]
+In the slide's figure, \enquote{You} signed the keys of $a$ to $f$ directly, so they are all legitimate. You also gave full trust to $d$, $e$, $f$ (and to $l$) and marginal trust to $a$ and $b$. Then:
+\begin{itemize}
+    \item the key of $h$, signed by both $a$ and $b$, is legitimate: in this example two marginal signatures suffice;
+    \item the key of $g$, signed only by $a$, is not;
+    \item $c$'s key is legitimate (You signed it), but You do not trust $c$ as an introducer, so the keys that only $c$ signed ($i$, $j$, $k$) remain unverified;
+    \item $l$, signed by the fully trusted $d$, is legitimate, and since You also trust $l$, the keys of $p$ and $q$, signed by $l$, become legitimate in turn;
+    \item keys signed only by unknown users (\enquote{?}), like $s$, are not legitimate.
+\end{itemize}
+\end{example}
+
+\begin{table}[H]
+\centering
+\caption{Two ways to trust a public key.}
+\label{tab:pki-vs-wot}
+\begin{tabularx}{\textwidth}{@{}l X X@{}}
+\toprule
+ & X.509 PKI (\cref{sec:pki}) & PGP web of trust \\
+\midrule
+Who certifies & Certification authorities & Any user \\
+Structure & Hierarchy rooted in trust stores & Graph of mutual signatures \\
+Trust decision & Made by the vendors of browsers and operating systems & Made by each user \\
+Strength & Scales to the whole web; no user effort & No central point to compromise or coerce \\
+Weakness & Any trusted CA can certify any name & Hard to bootstrap, needs user effort, the graph reveals who knows whom \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Revocation.} A PGP key is revoked by publishing a \emph{revocation certificate}, signed with the key itself. Since a lost key can no longer sign anything, the revocation certificate should be generated in advance, at key creation time, and stored safely; GnuPG does this automatically.
+
+\subsection{Hands-on: GnuPG}
+
+From the lab slides; tested with GnuPG 2.5.
+
+\begin{minted}{bash}
+gpg --full-generate-key
+gpg --list-keys
+gpg --armor --export alice@example.test > alice.asc
+gpg --import bob.asc
+gpg --fingerprint bob@example.test
+gpg --armor --encrypt -r bob@example.test msg.txt
+gpg --decrypt msg.txt.asc
+gpg --clearsign msg.txt
+gpg --sign msg.txt
+gpg --detach-sign msg.txt
+gpg --verify msg.txt.sig msg.txt
+\end{minted}
+
+\begin{itemize}
+    \item \texttt{--full-generate-key} (or the shorter \texttt{--gen-key}) creates a key pair protected by a passphrase. Current GnuPG creates an Ed25519 key for signing with a Curve25519 subkey for encryption: separate keys for the two uses, as recommended in \cref{sec:secret-sharing}.
+    \item \texttt{--armor} produces radix-64 text instead of binary. \texttt{--export} prints a public key for others; \texttt{--import} adds theirs to the public key ring.
+    \item \texttt{--fingerprint} shows the fingerprint to compare over another channel (in person, by phone) before trusting an imported key. Until the key has been certified, GnuPG refuses to encrypt to it in non-interactive use and labels signatures by it \texttt{[unknown]}: after checking the fingerprint, certify it with \texttt{gpg --sign-key}.
+    \item \texttt{--encrypt -r} is hybrid encryption to recipient \texttt{-r}. Inspecting the result with \texttt{gpg --list-packets} shows the structure of \cref{tab:pgp-pipeline}: a packet with the session key encrypted for the recipient's key ID, then the AES-256 encrypted data in an authenticated (OCB) mode, containing a compressed packet with the literal data.
+    \item Three kinds of signature: \texttt{--clearsign} (readable text plus signature), \texttt{--sign} (binary, compressed signed file), \texttt{--detach-sign} (signature in a separate file). \texttt{--verify} prints \texttt{Good signature}, or \texttt{BAD signature} if even one character of the file has changed.
+\end{itemize}
+
+\begin{remark}[PGP today]
+Beyond the slides. PGP e-mail never became mainstream. Usability is a classic problem (\enquote{Why Johnny can't encrypt}, 1999): users struggle with keys, fingerprints, and trust settings. In 2018 the \emph{Efail} attacks showed that many e-mail clients could be tricked into leaking decrypted messages, combining the malleability of the old encryption mode (unauthenticated, as in \cref{subsec:ae}) with HTML that loads external content. Modern OpenPGP uses authenticated encryption. OpenPGP signatures remain widespread elsewhere: Linux distributions sign their packages with them, and developers sign software releases and Git commits.
+\end{remark}
+
+\begin{summary}
+\begin{itemize}
+    \item PGP (Zimmermann, 1991; standard OpenPGP) provides confidentiality and authentication for e-mail and files with well-reviewed algorithms.
+    \item Services: signature (hash then sign with the private key, also detached), encryption (fresh session key per message, encrypted with the recipient's public key), compression, radix-64 for e-mail.
+    \item Order: sign, compress, encrypt, radix-64. Sign before compressing (verifiable without recompression), compress before encrypting (ciphertext does not compress).
+    \item Keys: session keys, public keys, private keys (stored encrypted under a passphrase-derived key). 64-bit key IDs identify which key was used; verify keys by their full fingerprint.
+    \item Web of trust: no CA; users sign each other's keys. Key legitimacy (is the key really theirs) differs from owner trust (do I trust them as introducers). Revocation certificates should be made in advance.
+\end{itemize}
+\end{summary}
+
+\subsection*{Exercises}
+
+\begin{exercise}
+Why does PGP sign the message \emph{before} compressing it, and compress it \emph{before} encrypting it? What would go wrong with the opposite orders?
+\end{exercise}
+\begin{solution}
+Signing the uncompressed message lets anyone store the original document with its signature and verify it later; a signature on compressed data would require keeping the compressed form or recompressing at verification time, and another compression program (or version) may produce different bytes, so the signature would fail. Compressing before encrypting saves space and removes redundancy; compressing after encrypting is pointless, because ciphertext looks random and does not compress.
+\end{solution}
+
+\begin{exercise}
+Alice sends a 3~MB signed and encrypted attachment by e-mail with ASCII armour. Roughly how large is the armoured message? Why is the conversion needed at all?
+\end{exercise}
+\begin{solution}
+Radix-64 turns every 3 bytes into 4 characters, so about $3 \times 4/3 = 4$~MB, plus line breaks and headers (less if compression shrank the data first). It is needed because encryption produces arbitrary binary bytes, while e-mail was designed to carry text and may alter or reject other bytes.
+\end{solution}
+
+\begin{exercise}
+Why does PGP encrypt each message with a new random session key carried in the message, instead of agreeing on a key with Diffie--Hellman as TLS does?
+\end{exercise}
+\begin{solution}
+Diffie--Hellman is interactive: both parties must exchange values before the key exists. E-mail is store-and-forward, and the recipient may be offline for days, so the sender must be able to encrypt using only the recipient's public key. A fresh session key per message also limits the damage of a leaked session key to one message, and encrypting the same session key under several public keys sends one message to many recipients.
+\end{solution}
+
+\begin{exercise}
+With GnuPG's default rule (one fully trusted or three marginally trusted signatures), decide which keys are legitimate. You signed the keys of Ann and Ben. You trust Ann fully and Ben marginally, and you also trust Carl and Dora marginally, but you have not signed their keys. Eve's key is signed by Ann. Frank's key is signed by Ben, Carl, and Dora. Gina's key is signed by Ben and Ann.
+\end{exercise}
+\begin{solution}
+Ann and Ben: legitimate (signed by you). Eve: legitimate (one fully trusted signature, Ann's). Gina: legitimate (Ann's signature alone suffices). Frank: \emph{not} legitimate. Carl's and Dora's signatures do not count, because their own keys are not legitimate: owner trust only matters for keys you already know are genuine. Only Ben's marginal signature remains, one of the three needed.
+\end{solution}
+
+\begin{exercise}
+A colleague publishes a key and tells you its 32-bit key ID over the phone so you can check it. Why is this not enough, and what should you compare instead?
+\end{exercise}
+\begin{solution}
+An attacker only needs a key whose 32-bit ID matches the given one, a search of about $2^{32}$ key generations, a matter of seconds on a GPU (the Evil 32 project did it for thousands of real keys). Even 64-bit IDs are only identifiers, not a security check. Compare the full fingerprint (\texttt{gpg --fingerprint}), whose length makes such a search infeasible.
+\end{solution}
