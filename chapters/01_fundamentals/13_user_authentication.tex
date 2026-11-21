@@ -1,5 +1,6 @@
 % Source: Romandini, 11_Identification slides; online lecture of 20 Nov 2026 (last 30 minutes,
-%         up to multi-factor authentication; passwordless and digital identity from the slides only).
+%         up to multi-factor authentication); lecture of 21 Nov 2026, morning, in person
+%         (replay exercise, passwordless with a live demo, OAuth/OpenID Connect, self-sovereign identity).
 \section{User Authentication and Digital Identity}
 \label{sec:user-auth}
 
@@ -41,6 +42,14 @@ Two countermeasures:
     \item \textbf{Challenge/response}: $A$, expecting a fresh message from $B$, first sends a \textbf{nonce} (challenge) and accepts only a response that contains it. No clocks needed, but an extra round trip, and unsuitable for connectionless one-shot messages.
 \end{itemize}
 The KDC protocol (\cref{fig:kdc}) and the public-key authority (\cref{fig:pk-authority}) use both.
+
+\paragraph{Defending against each replay: the exercise of 21 November.} The lecture opened with the class looking for a defence against each kind of replay. The running examples were a message \enquote{open the door} and a message \enquote{send me 100 euros}: encrypted and signed, so the attacker cannot read them, only copy them.
+\begin{itemize}
+    \item \emph{Simple replay.} Make every message unique, with a nonce, a counter, or a timestamp, and let $B$ remember what it has already accepted. B cannot simply refuse to see the same command twice, since \enquote{open the door} is legitimately sent many times a day: it is the nonce that makes each copy distinct. A timestamp with a short validity window (say 30 seconds) also bounds how long $B$ must remember.
+    \item \emph{Repetition within the window.} $B$ keeps a log (e.g.\ the hashes) of the messages received during the validity window and rejects duplicates. Entries can be dropped once they expire, because by then the timestamp rejects the message anyway.
+    \item \emph{Suppress, then replay.} This one \emph{cannot be prevented}. To $B$ the replayed message is the only copy, and to $A$ it looks like a network failure. The Internet is asynchronous, so messages are lost or delayed even without an attacker, and $A$ cannot even be sure that $B$ received a message, since an acknowledgement can be lost too. The only mitigation is a short validity window. Network latency is usually 50--100\,ms, so even one second is generous, and a ten-second delay to \enquote{open the door} costs the user little. A window that grows when the network is slow (like TCP's congestion window) is reasonable, but not by much, or the attacker can make the network look slow to get a longer window.
+    \item \emph{Backward replay.} Under a symmetric session key, messages have no direction: $A$ and $B$ encrypt with the same key. The attacker reflects $A$'s \enquote{send me 100 euros} back to $A$, who takes it for a request from $B$ and pays. The fix is to give messages a direction. Either put the sender's and receiver's identifiers inside the encrypted message (\enquote{from $A$ to $B$}), so that $A$ discards a message addressed to $B$, or use per-direction counters, or a transformation of the nonce as in the KDC protocol. Signing every message would work too, but public-key operations are far too slow for every packet: they are used only to set up the session key. Beyond the slides: TLS derives separate keys for the two directions (client-to-server and server-to-client), so a reflected record simply fails to decrypt.
+\end{itemize}
 
 \paragraph{Other attacks on authentication protocols.}
 \begin{itemize}
@@ -132,6 +141,22 @@ A FIDO2 credential (a key pair), usually synchronised across the user's devices 
 
 The trade-off: synced passkeys are as safe as the account that synchronises them; hardware security keys, whose private keys cannot be exported, remain the strongest option.
 
+\paragraph{Points raised in class.}
+\begin{itemize}
+    \item \emph{A breach of the RP} yields a meaningless user ID and a public key per user, from which the private key cannot be computed.
+    \item \emph{The challenge} must be fresh for every login: a large, unpredictable random value. If it repeats, an attacker who recorded an earlier response simply replays it.
+    \item \emph{Nobody certifies these public keys}, a student objected. True, and not needed: the RP is not checking who you are in real life (Google does not check the name you type at sign-up), only that you are the same user who registered this key. Authenticating the \emph{server} is a separate step that happens before, with TLS and its certificate (\cref{sec:pki}).
+    \item \emph{Attestation.} Each authenticator model (Apple's Face ID, a laptop's fingerprint reader, a security key) has its own embedded key and a certificate from its manufacturer. An RP that asks for attestation learns which kind of authenticator signed. If a model turns out to be vulnerable, the RP can refuse it, or its certificate can be revoked.
+    \item \emph{Usernameless login}: you just press \enquote{log in}. The response says which credential signed, and the RP looks up the matching public key, so no e-mail or username is needed.
+    \item \emph{Losing the device.} Sites that create passkeys usually also give you \textbf{recovery codes}, to be kept somewhere safe and used to regain the account.
+\end{itemize}
+
+\paragraph{The live demo.} On a WebAuthn test site, registering an account made Chrome's password manager offer to create a passkey, after a fingerprint scan. Logging in again took only the fingerprint, with no password. The key pair was created by the operating system, on the browser's request, and stored in Chrome's passkey manager, which synchronises it across the lecturer's devices. The fingerprint reader only unlocks that store; it does not hold the key.
+
+\begin{remark}[Is passwordless a second factor?]
+The lecturer said that passwordless is not two-factor authentication by itself, since everything rests on the private key. More precisely, the private key is something you \emph{have}, and the authenticator normally unlocks it only after a local PIN or biometric check (user verification), which is something you know or are. With user verification a passkey therefore combines two factors in one step, and NIST accepts passkeys at its multi-factor level (AAL2). Without user verification, i.e.\ with only a touch of the security key, it is a single factor.
+\end{remark}
+
 \paragraph{Why FIDO2 resists phishing.} A user can be fooled by \texttt{examp1e.com}; the browser cannot. The authenticator only uses a credential for the \texttt{rpID} it was created for, and the signed data include the origin reported by the browser. A fake site gets no signature at all, or a signature bound to the wrong origin that the real RP rejects. The toy model below (Ed25519 standing in for the authenticator's key; real WebAuthn signs more data) shows the mechanism:
 
 \begin{minted}{python}
@@ -184,12 +209,53 @@ It prints \texttt{True} (normal sign-in), \texttt{None} (the look-alike domain h
 \end{itemize}
 Limits: dependency on the IdP (if it is compromised or down, access fails); limited privacy (the IdP can see every service the user logs into, and personal data are centralised and shared); reduced user control over where data go.
 
+\paragraph{OAuth 2.0 step by step.} The lecturer's example, which he said is not yet in the slide PDF, comes from a well-known introductory talk on OAuth. \emph{Terrible Pun of the Day} is a site that wants to e-mail today's pun to all your contacts. Instead of giving it your Gmail password, you let it use Gmail on your behalf. The roles:
+\begin{itemize}
+    \item the \textbf{resource owner} is you, who owns the contacts;
+    \item the \textbf{client} is Terrible Pun of the Day, the application that wants access (not the user, a common confusion);
+    \item the \textbf{authorisation server} is Google's login and consent service, and the \textbf{resource server} is the Gmail API that the client wants to call.
+\end{itemize}
+Beforehand, the client must have registered with Google (on Google's developer pages). It received a \textbf{client ID} (public) and a \textbf{client secret} (shared with Google only) and declared a \textbf{redirect URI}. Without that prior agreement there is no OAuth. Then:
+\begin{enumerate}
+    \item The client sends your browser to the authorisation server with its client ID, the redirect URI, the response type (\texttt{code}) and the \textbf{scope}, i.e.\ the permissions it wants (e.g.\ read contacts, send e-mail).
+    \item You are now on Google's page, not the client's (check the address bar). You log in to Google, if not already logged in, and a consent screen lists the requested scope; you allow or deny. The client sees none of this.
+    \item Google redirects the browser to the redirect URI, with a short-lived \textbf{authorisation code} in the URL.
+    \item The client sends the code, its client ID and its client secret \emph{directly} to the authorisation server.
+    \item The authorisation server answers with an \textbf{access token}, valid for a limited time and only for the granted scope.
+    \item The client calls the Gmail API with the access token. It never learns your password, and it can do only what you allowed.
+\end{enumerate}
+
+\begin{remark}[Why the authorisation code? A question from class]
+A student asked why step 3 hands out a code instead of the access token itself, since the client already proves who it is with its secret. The lecturer's answer: the code ties the token to \emph{this} user's consent and \emph{this} scope, so the server need not guess which grant the client is talking about. The main reason is another one, though. Step 3 travels through the browser, in a URL (the \emph{front channel}), where it can leak through history, logs or a malicious extension. So what travels there is a code that is short-lived, usable once, and worthless without the client secret. The access token is delivered in step 5 over a direct connection between the servers (the \emph{back channel}), and never passes through the browser. Beyond the slides: apps that cannot keep a secret (mobile apps, single-page web apps) use \emph{PKCE} (RFC 7636) instead: the client sends a hash of a random value in step 1 and reveals the value in step 4.
+\end{remark}
+
+\paragraph{OpenID Connect: the ID token.} OAuth alone authorises; it does not tell the client who you are. With OIDC the client adds \texttt{openid} to the scope, and step 5 also returns an \textbf{ID token}: a JSON Web Token (header, claims, signature) \emph{signed by the IdP}. It says, in effect, \enquote{this is user 123 of Google}, with the IdP's stable identifier for you, the issuer, the audience (the client ID), and an expiry. The client uses that identifier to create or find your account. Names will not do, since there are many Mario Rossi; the IdP's identifier is unique, and the IdP vouches for it with its signature. If the scope is only \texttt{openid}, the access token is not needed at all. The access token is meant for the resource server; the client must not treat it as proof of identity, which is the ID token's job. Every later login goes through the IdP again, unless a session is still cached. And signing in with Apple on a site where you registered with Google gives you a second, separate account, unless the site links them.
+
+\paragraph{The drawbacks discussed in class.}
+\begin{itemize}
+    \item Whoever steals your Google account gets into every service linked to it. That is worse than reusing one password everywhere, but MFA on the IdP account largely blocks it.
+    \item If the IdP is down, you cannot log in to sites that are themselves working.
+    \item Tracking: the IdP learns every site you log in to.
+    \item A compromised IdP exposes every user's accounts. That is why IdPs are large companies, and why SPID providers are accredited and audited.
+    \item \textbf{Vendor lock-in}: your identity is the IdP's identifier, so moving away is hard. If the IdP closes your account, for whatever reason, you are locked out of everything that depends on it, unless you added another way to log in.
+\end{itemize}
+
 \paragraph{Self-sovereign identity (SSI).} The latest stage: individuals hold their own identity data and decide when, if, and how to disclose them.
 \begin{itemize}
     \item A \textbf{decentralised identifier} (DID, a W3C standard) identifies a subject (a person, an organisation, a device). It resolves to a \textbf{DID document} with public keys, service endpoints, and authentication parameters. The subject proves control of the DID with the matching private key; the verifier fetches the DID document from a \textbf{verifiable data registry} (VDR), often, but not necessarily, a blockchain.
     \item A \textbf{verifiable credential} (VC) is a set of claims (e.g.\ \enquote{born on \dots}, \enquote{holds a degree in \dots}) signed by an \emph{issuer}, kept by the \emph{holder} in a wallet on their device, and shown to a \emph{verifier}, who checks the issuer's signature without contacting the issuer.
     \item \textbf{Selective disclosure}: the holder reveals only what the transaction needs; to buy alcohol, \enquote{over 18}, not name, address, and date of birth.
     \item VCs vs X.509 (\cref{sec:pki}): a certificate is a fixed format that binds data to a public key; a VC can carry any claim, as long as the verifier can interpret it.
+\end{itemize}
+
+\paragraph{More on SSI, from class.}
+\begin{itemize}
+    \item The \textbf{DID controller} is whoever controls the DID's keys. It is usually the subject itself, but not always: a car can have a DID, and its owner is the controller.
+    \item A DID is a random string, so it is pseudonymous. An organisation can still choose to be recognisable, by publishing its DID on its website or naming itself in the DID document.
+    \item The registry holds DIDs and DID documents; the \emph{credentials} are not stored there but kept by the holder, in a wallet.
+    \item A credential is only worth as much as its issuer's authority over the claim. A self-signed claim means nothing, and nor does a degree certificate signed by your mother. A degree must be signed by the university, and \enquote{over 18} or a driving licence by the government or the licensing office. A VC is a JSON document, often a JWT (header, claims, signature); the holder shows it in a \emph{verifiable presentation}, and the verifier checks the signature with the issuer's public key from its DID document. Once issued, the issuer cannot stop the holder from presenting it to anyone.
+    \item \textbf{Selective disclosure} can be done with separate single-claim credentials (one that only says \enquote{over 18}), or with cryptography that derives a proof from a richer credential, up to zero-knowledge proofs. A credential that is no longer valid (a licence withdrawn, an address changed) is \textbf{revoked} through a list published on the registry, as with certificates. Beyond the slides: the W3C standard uses a compressed bitstring, one bit per credential, so that checking a credential does not reveal which one is being checked.
+    \item In Italy the wallet already exists inside the IO app. A driving licence stored there carries a QR code that a police officer scans to verify it, i.e.\ a signed credential. The lecturer expects such wallets to replace SPID eventually. The same model is being explored for \emph{AI agents}: a credential signed by you can authorise an agent to buy or access a service on your behalf.
 \end{itemize}
 
 \paragraph{Europe: eIDAS 2.0.} Regulation (EU) 2024/1183, in force since May 2024, creates the European Digital Identity Framework. Every member state must offer citizens a free \textbf{EU Digital Identity Wallet} by the end of 2026 (its use is optional). The wallet stores identity data and attested attributes with selective disclosure, i.e.\ the SSI model; public services must accept it, and acceptance by large private services (banks, telecoms, big platforms) follows. It also lets users create qualified electronic signatures (\cref{sec:signatures}).
