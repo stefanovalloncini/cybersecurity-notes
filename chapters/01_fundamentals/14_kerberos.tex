@@ -1,4 +1,4 @@
-% Source: Romandini, 12_Kerberos slides (written from the slides only).
+% Source: Romandini, 12_Kerberos slides; lecture of 21 Nov 2026, afternoon (about 25 minutes).
 \section{Kerberos}
 \label{sec:kerberos}
 
@@ -100,6 +100,12 @@ The answers are a \textbf{session key} inside each ticket, and an \textbf{authen
     \item The client sends $V$ the ticket and a new authenticator under $K_{c,v}$. $V$ opens the ticket with its own key $K_v$, recovers $K_{c,v}$, and checks the authenticator.
     \item For mutual authentication, $V$ returns $TS_5 + 1$ encrypted with $K_{c,v}$: only the real $V$ could open the ticket and learn $K_{c,v}$, and adding 1 shows that it decrypted the timestamp rather than replaying the client's own ciphertext.
 \end{enumerate}
+\begin{remark}[What was said in class]
+The lecturer said you will not be asked to reproduce the messages; what matters is the reason for each element. Timestamps give freshness against replay. $TS_5 + 1$ is a challenge/response. The ticket is encrypted for the next server, so the client only carries it. Kerberos was designed for fixed desktop workstations inside a company, and it is the KDC of \cref{sec:key-distribution} extended to give access to \emph{services}, so the ticket also says that you are allowed to use that service.
+
+Typical lifetimes: the TGT lasts a working day (say 10 hours), a service ticket about an hour. When a service ticket expires, the client goes back to the TGS with the still-valid TGT, without typing the password again. The password is only involved with the AS, which holds the user database. Lifetimes are a trade-off: short ones mean more requests, long ones give an attacker more traffic under the same key to analyse and more time to use a stolen ticket. Realms can mirror an organisation's departments: you authenticate in your own realm and are redirected to the other department's TGS for its services. A student asked whether the name comes from the three servers involved. The lecturer was not sure, only that it comes from mythology (Cerberus, the three-headed dog guarding the underworld).
+\end{remark}
+
 The timestamps and lifetimes bound the replay window: a server rejects authenticators whose timestamp is outside a small tolerance (typically five minutes) and, ideally, remembers recently seen ones to reject exact replays inside it. The price is that \textbf{all clocks must be synchronised}: a client whose clock drifts beyond the tolerance cannot log in. $K_{c,v}$ can then also protect the rest of the session.
 
 \subsection{Realms and principals}

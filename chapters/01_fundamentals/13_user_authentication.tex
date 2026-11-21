@@ -1,6 +1,7 @@
 % Source: Romandini, 11_Identification slides; online lecture of 20 Nov 2026 (last 30 minutes,
 %         up to multi-factor authentication); lecture of 21 Nov 2026, morning, in person
-%         (replay exercise, passwordless with a live demo, OAuth/OpenID Connect, self-sovereign identity).
+%         (replay exercise, passwordless with a live demo, OAuth/OpenID Connect, self-sovereign identity);
+%         afternoon of 21 Nov (John the Ripper exercise, kept at a conceptual level here).
 \section{User Authentication and Digital Identity}
 \label{sec:user-auth}
 
@@ -103,6 +104,15 @@ In class the salt was said to \enquote{not block a brute force or dictionary att
 
 The lecturer also said that storing passwords in clear violates the GDPR. The GDPR does not mention hashing; it requires security \enquote{appropriate to the risk} (Article 32), and regulators treat plaintext passwords as a breach of it. In September 2024 the Irish Data Protection Commission fined Meta 91 million euros for keeping hundreds of millions of users' passwords in plaintext on internal systems.
 \end{remark}
+
+\paragraph{The John the Ripper exercise.} In the afternoon of 21 November the class tried John the Ripper, an open-source password cracker, on an exercise from the lab slides. The task was a set of unsalted MD5 hashes of passwords, each built from an English word with a simple transformation. The points to take away:
+\begin{itemize}
+    \item A cracker never \enquote{reverses} a hash. It hashes candidate passwords and compares the results with the stolen ones, offline, where no lockout applies.
+    \item It has three modes: \emph{single} (variations of the user's own data, such as the name), \emph{wordlist} (a dictionary of common passwords, from the small list shipped with the tool to the millions of entries of \texttt{rockyou.txt}), and \emph{incremental} (plain brute force, very slow).
+    \item \emph{Rules}, written in the configuration file, turn every dictionary word into its predictable variants: capitalised, all uppercase, reversed, duplicated, with digits or symbols appended. These are exactly the patterns that complexity requirements produce. The lecturer pointed out that the full \enquote{jumbo} version of the tool is needed (preinstalled on Kali, or from its GitHub repository); the one in a distribution's package manager may lack the features the exercise uses.
+    \item In class nobody cracked the whole set. The solution in the slides reports that a large wordlist with simple rules finds about half; the rest resist. A dictionary attack only finds passwords that follow a predictable pattern. Random passwords, together with salts and slow hashes, are what make offline cracking impractical.
+\end{itemize}
+The lecturer said that the exercises will not be in the exam.
 
 \subsection{Multi-factor authentication}
 

@@ -1,4 +1,6 @@
-% Source: Romandini, 13_Introduction_Blockchain slides (written from the slides only).
+% Source: Romandini, 13_Introduction_Blockchain slides; lecture of 21 Nov 2026, last part of the
+%         afternoon (about 1 h 45 min, up to smart contracts). DAOs, NFTs, oracles, use cases,
+%         the ledger taxonomy and Hyperledger Fabric were not covered in class: from the slides only.
 \section{Introduction to Blockchain}
 \label{sec:blockchain}
 
@@ -49,6 +51,12 @@ No deterministic protocol solves consensus in an asynchronous system in which ev
 \end{theorem}
 It is often said that blockchains solve consensus. As we will see, they do not: they relax one of the properties.
 
+\begin{example}[The two generals, told in class]
+Two Roman generals are camped on opposite sides of a valley, with the enemy army in the middle. If they attack together they win; if only one attacks, it loses. They can only communicate by messenger, across the valley, and a messenger may get lost. (Nobody here lies: this is a benign fault, not a Byzantine one.) General $A$ sends \enquote{attack tomorrow at 6}. Should $A$ attack? Not without knowing that $B$ got the message. So $B$ sends back an acknowledgement. Should $B$ attack? Not without knowing that the acknowledgement arrived, so $A$ acknowledges the acknowledgement, and so on forever. Whatever the number of messages, the last messenger might have been lost, and the sender of the last message cannot be sure that the other side knows. TCP's three-way handshake faces the same problem and simply stops after three messages: if something goes wrong, the connection is retried. That is acceptable for a web page, not for a life-or-death attack.
+
+Beyond the slides: the two generals problem is about an \emph{unreliable channel} (lost messages); the FLP theorem assumes that messages are eventually delivered and that a \emph{process} may crash; the \emph{Byzantine} generals problem adds participants who lie. The Internet has all three: lost messages, crashed nodes, and malicious ones.
+\end{example}
+
 \subsection{The Bitcoin blockchain}
 
 \begin{definition}[Blockchain]
@@ -81,13 +89,25 @@ Bitcoin operates in an asynchronous, distributed, and decentralised environment,
 To create a block, a miner must find a nonce such that the hash of the block header is less than or equal to the target. Since the hash behaves like a random function, the best algorithm is brute force: try nonces until one works. Solving the puzzle quickly requires a large amount of computing power; checking a solution takes one hash.
 \end{definition}
 
+\paragraph{The puzzle, as explained in class.} When a miner starts, almost everything in the header is fixed: the hash of the previous block, the Merkle root of the transactions it has chosen, the target, the timestamp. The only free field is the nonce. So the miner tries nonce 0, hashes the header, compares the result with the target, then tries 1, 2, and so on. A near miss means nothing: if nonce 1 gives a hash just above the target, nonce 2 is no more likely to succeed, because changing one bit of the input gives an unrelated output (the avalanche effect, \cref{sec:base-mechanisms}). The winner broadcasts the whole block, and every other node checks it with a single hash, without having to trust the miner. Why make block creation deliberately hard, a student asked? Without a cost, Byzantine nodes could flood the network with blocks and create millions of competing chains. Proof of work slows everybody down and makes spam expensive. Proof of stake, used by Ethereum since 2022, reaches the same goal differently (see \enquote{Beyond Bitcoin} below).
+
+\begin{remark}[Quantum computers and proof of work]
+Asked whether quantum computers threaten the blockchain, the lecturer answered that proof of work rests on SHA-256, which no known quantum algorithm breaks. More precisely, Grover's algorithm would give a quantum miner a quadratic speed-up in the search, an advantage but not a break. The real quantum threat to Bitcoin is to its \emph{signatures}. They use elliptic curves, which Shor's algorithm breaks (\cref{sec:asymmetric}), so coins whose public key is visible on the chain could be stolen.
+\end{remark}
+
 Proof of work discourages Byzantine miners and denial of service: proposing blocks costs real resources. The miner who succeeds is rewarded with newly created bitcoins (the \emph{block reward}) plus the transaction fees. The reward halves every 210{,}000 blocks (about four years): it has been 3.125~BTC since April 2024 (one slide still shows the previous 6.25). Every 2016 blocks (about two weeks) the target is adjusted so that, whatever the total computing power, a block is found every 10 minutes on average.
 
 \paragraph{Forks.} A miner either solves the puzzle first, appends its block, and broadcasts it, or receives a valid block from another miner first, stops, and appends that. But in an asynchronous network a block may arrive at any moment, and two miners may solve the puzzle almost simultaneously: nodes then keep both branches, a \textbf{fork}. The rule is that the \textbf{longest chain} (strictly, the one with the most accumulated work) is the valid one. When one branch gets ahead, the blocks of the other become \emph{orphans}, and their transactions return to the pool of transactions to be included.
 
+In class the question was how a miner should choose between two competing blocks. Not by timestamp: in an asynchronous system clocks are not shared, and anyone can set their own clock to look first. Not by order of arrival either, since that says nothing about what the rest of the network has. The only option is to keep both and wait. The forks then resolve themselves through the miners' self-interest: the reward is a transaction inside the block, and it counts only if the block ends up in the longest chain. So every miner builds on the longest branch it knows, since that is the one most likely to be kept. As soon as one branch gets ahead, everybody moves to it.
+
 \paragraph{Double spending.} An attacker can send two conflicting transactions spending the same coins to two different miners. A transaction that spends money already spent in the valid chain is rejected, and eventually only one of the two blocks remains in the longest chain. The rule for recipients is therefore to wait until the block containing their transaction is \enquote{buried} by about \textbf{6 further blocks} (about an hour): the probability that a fork overtakes it then becomes negligible.
 
+The lecturer's example: a car dealer accepts one bitcoin for a car. A careful dealer waits for six blocks after the one containing the payment, about an hour, before handing over the keys. If the payment ends up in an orphaned block, it is not lost: it goes back into a later block, and the buyer can send it to several miners to speed things up. A double-spending buyer, who sent the same coin both to the dealer and to someone else, finds that only one of the two payments survives in the longest chain.
+
 \paragraph{51\% attack.} An entity controlling more than half of the computing power can build a secret chain faster than everyone else, then publish it: being longer, it replaces the public chain, and with it the transactions the attacker wants to undo (e.g.\ a payment already used to obtain goods). In 2014 the mining pool Ghash.io briefly controlled more than 50\% of Bitcoin's computing power.
+
+In the dealer's example, the attacker pays, waits while the dealer counts six blocks, and drives away. Meanwhile, in secret, he has been mining his own branch from the block \emph{before} the payment, without the payment in it. With most of the computing power his branch grows faster. When it is longer, he publishes it. The other nodes cannot treat late blocks as malicious, since in an asynchronous network they may just have been delayed, so they switch to the longer chain. The payment disappears: the attacker has the car and still has the coin. Against Bitcoin this is out of reach today, because nobody has that much computing power; against small blockchains it has happened.
 
 \paragraph{Consensus, revisited.} Nakamoto consensus does not escape the FLP theorem; it relaxes agreement:
 \begin{itemize}
@@ -115,6 +135,12 @@ Bitcoin does not store \enquote{coins} or balances: it stores every transaction.
     \item Inputs minus outputs is unclaimed: it is the \textbf{fee} that goes to the miner, an incentive to include the transaction (quickly).
 \end{itemize}
 An output that has not been spent yet is an \textbf{unspent transaction output} (UTXO); the sum of all UTXOs is the total supply at that moment.
+
+The lecturer's analogy is a banknote's life. The European Central Bank prints it, a bank receives it, Mario withdraws it, and Mario pays Paolo with it. Paolo may spend it because he holds it. If every hand-over were written down, Paolo's right to spend would follow from the record alone, with no physical note: that record is the ledger. His example of a transaction: to pay 1~BTC, I point to two earlier payments to my address, of 0.5 and 0.7~BTC, as inputs. The outputs are 1~BTC to you and, say, 0.15 back to my own address as change. The remaining 0.05 is unclaimed and goes to the miner as a fee. The larger the fee, the sooner a miner will include my transaction, since a block has room for a limited number of them.
+
+\begin{remark}[What is in the exam]
+The lecturer went through transactions quickly. He said this part (the structure of transactions and how they are validated) will not be in the exam, and that for the blockchain only the part covered in class counts.
+\end{remark}
 
 \paragraph{Scripts.} Inputs and outputs actually contain small programs in Bitcoin's (deliberately limited) scripting language. The output's \emph{locking script} (\texttt{scriptPubKey}) says what is needed to spend it; the spending input's \emph{unlocking script} (\texttt{scriptSig}) provides it. The common \emph{pay to public key hash} (P2PKH) output is
 \begin{center}
@@ -191,7 +217,7 @@ With the blockchain as enabler, a smart contract needs no intermediary to execut
 
 \paragraph{Limitations.}
 \begin{itemize}
-    \item Execution must be \textbf{deterministic}, or nodes would disagree: no local random numbers, clocks, or network calls.
+    \item Execution must be \textbf{deterministic}, or nodes would disagree: no local random numbers, clocks, or network calls. The lecturer's example: a contract whose only function returns a random number. Every node would compute a different value, and there would be no \enquote{right} result to agree on; this is why Solidity, Ethereum's language, has no random-number library.
     \item Contrary to what is often said, a smart contract cannot \emph{execute itself}: something must send it a transaction.
     \item Immutability prevents adding features or fixing bugs: an upgrade means deploying a new contract and convincing everybody to use it.
     \item The code is public, so anyone can study it and exploit its vulnerabilities.
