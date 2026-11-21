@@ -1,4 +1,5 @@
-% Source: Romandini, 11_Identification slides (written from the slides only).
+% Source: Romandini, 11_Identification slides; online lecture of 20 Nov 2026 (last 30 minutes,
+%         up to multi-factor authentication; passwordless and digital identity from the slides only).
 \section{User Authentication and Digital Identity}
 \label{sec:user-auth}
 
@@ -49,7 +50,7 @@ The KDC protocol (\cref{fig:kdc}) and the public-key authority (\cref{fig:pk-aut
     \item \textbf{Forced delay}: the adversary intercepts a message (typically with a sequence number) and relays it later. It is not a replay, since the message is delivered only once.
     \item \textbf{Chosen-text attack}: against challenge/response, the adversary chooses challenges strategically to extract information about the claimant's long-term key.
 \end{itemize}
-Authentication protocols are either \emph{passive} (the same password every time) or \emph{active}: one-time passwords, challenge/response, zero-knowledge proofs.
+Authentication protocols are either \emph{passive} (the same password every time) or \emph{active}: one-time passwords, challenge/response, zero-knowledge proofs. As explained in class, with a password you only prove that you \emph{know} something; with an active protocol you must also \emph{do} something: encrypt a challenge, compute the answer to an equation (zero knowledge), or fetch a code from your phone and type it in.
 
 \subsection{Passwords}
 
@@ -62,6 +63,7 @@ Passwords are by far the most common method. According to the slides, an average
     \item change a password \textbf{only when it may be compromised}: forced periodic rotation is no longer recommended, since it pushes users towards predictable variations;
     \item check new passwords against lists of known leaked passwords, and use a \textbf{password manager}, so that every account can have a different random password.
 \end{itemize}
+The lecturer's warning about complexity rules: asked for an uppercase letter, a digit and a symbol, most people put the capital first, a digit at the end and a question or exclamation mark after it. Attackers know these patterns too.
 
 \paragraph{Passwords are shared secrets.} The service (the \emph{relying party}, RP) must know or be able to check the secret, so a password can be stolen from either side:
 \begin{itemize}
@@ -73,12 +75,25 @@ Passwords are by far the most common method. According to the slides, an average
 \end{itemize}
 Under the GDPR, companies that do not properly protect user data can be fined heavily.
 
+\paragraph{The attacks, as discussed in class.}
+\begin{itemize}
+    \item \textbf{Brute force} cannot be prevented in principle, since anyone can keep generating guesses. Against \emph{online} guessing, the simple defence is to limit attempts: after three wrong passwords the account is locked for a minute, then ten minutes, and so on. That does not help once the hashes have been stolen and are attacked offline.
+    \item \textbf{Credential stuffing}: attackers rarely break into Google or Amazon. They breach a small site with weak security, and immediately try the same e-mail and password on Facebook, on the bank, and elsewhere. In class, a student who checked Have I Been Pwned found an address in eight breaches. The lecturer noted that appearing in a breach means the address is known, not necessarily that the password leaked.
+    \item \textbf{Dictionary attacks}: words and their usual transformations (\texttt{3} for \texttt{e}, \texttt{4} for \texttt{a}) are predictable, and computing hashes is cheap. Ready-made wordlists exist; Kali Linux ships \texttt{rockyou.txt}, millions of real passwords from a 2009 breach. A stolen table of plain hashes is cracked by hashing the list and looking up the results.
+\end{itemize}
+
 \paragraph{Storing passwords.} A service must never store passwords in clear, nor encrypted with a key it holds: it stores a \emph{hash}, and at login hashes the submitted password and compares. Since hashes are one-way (\cref{sec:base-mechanisms}), a stolen table does not directly reveal passwords, but an attacker can still hash candidate passwords and compare. Two defences make that expensive:
 \begin{itemize}
     \item a random \textbf{salt} per password, stored with the hash: identical passwords get different hashes, and tables of hashes precomputed once cannot be reused across users or services;
     \item a deliberately \textbf{slow} (and ideally memory-hard) password-hashing function: bcrypt, scrypt, Argon2, or PBKDF2 with many iterations (\cref{sec:crypto-lab}). A fast general-purpose hash such as MD5 or SHA-256 is the wrong tool.
 \end{itemize}
 Even so, a password from a list of common ones is found quickly: storage protects strong passwords, not weak ones.
+
+\begin{remark}[What the salt does, and what it does not]
+In class the salt was said to \enquote{not block a brute force or dictionary attack, it just makes it slower}. More precisely, the salt is public and does not slow down a single guess. What it removes is \emph{precomputation and sharing}: a table of hashes computed in advance is useless, and every user's password must be attacked separately. Slowing down each guess is the job of the slow password-hashing function. With a fast hash, a single targeted user's salted password falls almost as fast as an unsalted one: the attacker just hashes the wordlist again with that user's salt.
+
+The lecturer also said that storing passwords in clear violates the GDPR. The GDPR does not mention hashing; it requires security \enquote{appropriate to the risk} (Article 32), and regulators treat plaintext passwords as a breach of it. In September 2024 the Irish Data Protection Commission fined Meta 91 million euros for keeping hundreds of millions of users' passwords in plaintext on internal systems.
+\end{remark}
 
 \subsection{Multi-factor authentication}
 

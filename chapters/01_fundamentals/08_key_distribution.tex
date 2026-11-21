@@ -1,4 +1,4 @@
-% Source: Romandini, 06_Key_Distribution slides (online lecture; written from the slides only);
+% Source: Romandini, 06_Key_Distribution slides and online lecture of 20 Nov 2026 (first hour);
 %         ExMaster exercise slides (KDC and cross-realm KDC exercises).
 \section{Key Distribution}
 \label{sec:key-distribution}
@@ -51,6 +51,8 @@ A \textbf{key distribution centre} (KDC) is a trusted server that distributes ke
 
 Master keys still have to be distributed somehow, but the scale of the problem drops from $N(N-1)/2$ pairs to $N$ keys, and they are used only to protect short session keys, so they leak very little ciphertext.
 
+\paragraph{Where a KDC fits.} The lecturer's example is a company network: when your laptop is enrolled, it receives a master key that is also installed on the company's KDC, physically and out of band, and both are trusted by everybody inside. A KDC cannot work on the open web, because your browser and an arbitrary server share no trusted third party with which both already have a key. The web still uses session keys (every time you reopen the browser and reconnect to a site, a new one is agreed), but it agrees on them with the public-key methods below.
+
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[>=Stealth]
@@ -80,6 +82,15 @@ Master keys still have to be distributed somehow, but the scale of the problem d
     \item $A$ replies with $f(N_2)$, a simple transformation such as $N_2 + 1$, encrypted with $K_s$.
 \end{enumerate}
 Steps 4 and 5 are an \emph{authentication} handshake: they convince $B$ that the party at the other end really holds $K_s$, and that step 3 is not an old message being replayed by somebody else. Echoing $N_2$ unchanged would not do, since anyone could resend the ciphertext of step 4 without decrypting it; applying $f$ forces $A$ to decrypt, transform, and re-encrypt.
+
+\begin{remark}[Questions from class]
+\leavevmode
+\begin{itemize}
+    \item \emph{What does $N_1$ stop?} The lecturer's scenario: an attacker records an old reply of the KDC and spends a month brute-forcing the session key inside it. Then he makes the KDC unreachable for Alice (he sits in the middle), and answers her next request with the old reply. Without $N_1$ Alice cannot tell it from a fresh one, so she and Bob end up using a key the attacker knows. With $N_1$ the old reply contains the wrong nonce, and Alice rejects it. Other defences he mentioned: refuse session keys already used, and change them often, so that a key broken after a month is long out of use. Recorded traffic can still be decrypted later (\emph{harvest now, decrypt later}, \cref{sec:asymmetric}), but the more often the key changes, the less traffic each broken key exposes.
+    \item \emph{Can an attacker between Alice and the KDC put his own $K_s$ in the reply?} No. The part for Alice must be encrypted under $K_a$, which only Alice and the KDC know. A forged reply would not decrypt to a well-formed message containing $ID_B$ and her $N_1$ (and with authenticated encryption it would not decrypt at all).
+    \item \emph{Is $K_a$ Alice's public key?} No: there is no public-key cryptography in this scheme. $K_a$ and $K_b$ are symmetric master keys, shared only with the KDC and installed out of band; they are used only to talk to the KDC, while $K_s$ is used between $A$ and $B$.
+\end{itemize}
+\end{remark}
 
 \begin{remark}[A known weakness: replaying old tickets]
 Beyond the slides. This is essentially the Needham--Schroeder protocol of 1978 \cite{needham1978}. In 1981 Denning and Sacco \cite{denning1981} pointed out a gap: $N_1$ protects $A$, but nothing tells $B$ that the ticket of step 3 is fresh. An attacker who recorded an old run and, much later, learns that run's session key $K_s$ (e.g.\ from a compromised machine) can replay the old step 3, decrypt $B$'s challenge with the old $K_s$, answer it, and be accepted by $B$ as $A$. The fix is to put a \textbf{timestamp} (or a nonce chosen by $B$) inside the ticket and to give session keys a short lifetime. Kerberos (\cref{sec:kerberos}) takes exactly this route.
@@ -195,6 +206,8 @@ An eavesdropper sees 353, 3, 40 and 248. To get the key it must find $x_A$ with 
 
 \begin{remark}[Why a primitive root]
 If $a$ is not a primitive root, its powers cycle through only a subset of the values, and the key is confined to that subset. For instance $2^k \bmod 23$ takes only 11 of the 22 possible values, while $5^k \bmod 23$ takes all of them. A smaller set of possible keys is easier to search; in real deployments the parameters are standardised groups chosen to avoid such small subgroups.
+
+The example worked in class, with $q = 7$: the powers of 2 are $2, 4, 1, 2, 4, 1, \dots$ (since $2^3 = 8 \equiv 1$), so 3, 5 and 6 are never reached and every key $K = 2^{m} \bmod 7$ is one of only three values. The powers of 3 are $3, 2, 6, 4, 5, 1$: all of $1, \dots, 6$, so 3 is a primitive root modulo 7. The same periodicity explains why the secrets are taken smaller than $q$: $a^{x}$ and $a^{x + (q-1)}$ are equal, so a larger exponent adds no new keys.
 \end{remark}
 
 The security of DH rests on the discrete logarithm: an attacker who could compute $x_A$ from $y_A$ would compute $K$ as Alice does. (Strictly, what is needed is the \emph{Diffie--Hellman problem}, computing $a^{x_A x_B}$ from $a^{x_A}$ and $a^{x_B}$, which is believed to be as hard.) Like factoring, the discrete logarithm has no proven lower bound, and \textbf{Shor's algorithm} solves it on a large quantum computer (\cref{sec:asymmetric}), so DH is not quantum-safe either.
@@ -263,6 +276,9 @@ With $q = 353$, $a = 3$, $x_A = 97$, $x_B = 233$ (\cref{ex:dh}), Darth chooses $
 \begin{remark}[The common problem: authentication]
 Merkle's scheme and Diffie--Hellman fail in the same way. The mathematics is sound; the attack works only because \textbf{nothing proves who sent the public value}. The same holds whether keys are generated fresh for each communication or published in a directory, if access to the directory is not authenticated. The fix is to authenticate the public values: Alice and Bob sign their DH values with long-term signature keys, and verify each other's signature with a public key they trust. That moves the problem to distributing \emph{public} keys reliably, which is the job of a trusted authority and, ultimately, of certificates.
 \end{remark}
+
+\paragraph{The three methods compared} (as summarised in class). A \textbf{KDC} needs a trusted third party and master keys agreed in advance, but then the exchange itself resists a man in the middle. \textbf{Public-key transport} and \textbf{Diffie--Hellman} need nothing agreed in advance, but they suffer from the man in the middle. As the lecturer put it, a public key carries no information about its owner: it is just a number, and whoever sends it can claim to be Bob. All three should renew session keys frequently.
+
 
 \subsection{Distributing public keys}
 

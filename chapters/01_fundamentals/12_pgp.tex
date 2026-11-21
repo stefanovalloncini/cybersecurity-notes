@@ -1,5 +1,5 @@
-% Source: Romandini, 10_PGP slides (written from the slides only);
-%         ExMaster exercise slides (GnuPG commands).
+% Source: Romandini, 10_PGP slides and online lecture of 20 Nov 2026 (about 40 minutes,
+%         with a short GnuPG demo); ExMaster exercise slides (GnuPG commands).
 \section{Pretty Good Privacy}
 \label{sec:pgp}
 
@@ -59,6 +59,15 @@ A fresh key for every message, carried inside the message, fits e-mail perfectly
     \item \emph{Before encryption}: it saves space for transmission and storage, and it must come first, since ciphertext looks random and cannot be compressed. It also removes redundancy from the plaintext.
 \end{itemize}
 
+\begin{remark}[Why sign before compressing: the discussion in class]
+The lecturer asked the question in class and collected three reasons.
+\begin{itemize}
+    \item \emph{Meaning.} You should sign what you mean. Signing the compressed bytes is like putting your signature on a page of random characters instead of on the contract.
+    \item \emph{Later verification} (the slides' reason, above): you would have to keep the compressed version, or remember exactly which algorithm and version produced it, in order to recompress and check.
+    \item \emph{Trust in the compressor.} Compression algorithms are less studied than cryptographic ones, and a signature on compressed data depends on them. More precisely, lossless compression is invertible, so two different messages can never compress to the same bytes. The real risk is that different decompressors, or versions, read the same bytes differently, so the signer and the verifier may not see the same document. Signing the plaintext keeps the decompressor out of the guarantee.
+\end{itemize}
+\end{remark}
+
 \paragraph{E-mail compatibility.} Encryption produces arbitrary bytes, but e-mail historically carried only printable text. \textbf{Radix-64} (Base64) maps every 3 bytes to 4 printable characters, 6 bits each, so the message grows by a third (\enquote{ASCII armour}, the \texttt{-----BEGIN PGP MESSAGE-----} blocks).
 
 \begin{table}[H]
@@ -106,6 +115,12 @@ Two notions must be kept apart:
     \item \textbf{owner trust}: do I trust this person to check identities carefully before signing other people's keys? This is assigned by each user (unknown, none, marginal, full) and is personal, not shared.
 \end{itemize}
 A key is legitimate if the user signed it personally, or if it is signed by enough trusted introducers. In GnuPG's default rule, one signature by a fully trusted key, or three by marginally trusted ones, suffice.
+
+\begin{remark}[Owner trust, as described in class]
+In class owner trust was described as \enquote{how much I trust that this key is actually connected with Professor Prandini}, i.e.\ trust in the key rather than in the person. In PGP's terms that is \emph{key legitimacy}. Owner trust is the other notion: how far I rely on that person's signatures on \emph{other people's} keys.
+\end{remark}
+
+\paragraph{Why it fits e-mail, as explained in class.} Most e-mail goes between people who know each other, directly or through a friend. So you start by collecting the keys of people you know physically, and add keys that institutions advertise. In the past, books and newspapers printed their authors' keys, and an office could give you its key over the counter. The lecturer pointed to the GnuPG key linked in the footer of Prof.\ Prandini's university e-mails (in class the link returned \enquote{not found}). Signing a friend's public key is a public way of vouching for it: whoever trusts you can then trust your friend's key too. It is also free. A certificate from a CA, such as the one behind an Italian \emph{firma digitale}, costs money. PGP suits a restricted group that wants authenticated communication without any central entity. He could, he said, have shown his own key on screen for students to copy down: they could see it was him, \enquote{unless I'm a deep fake}.
 
 \begin{example}[Zimmermann's trust diagram]
 In the slide's figure, \enquote{You} signed the keys of $a$ to $f$ directly, so they are all legitimate. You also gave full trust to $d$, $e$, $f$ (and to $l$) and marginal trust to $a$ and $b$. Then:
@@ -161,6 +176,12 @@ gpg --verify msg.txt.sig msg.txt
     \item \texttt{--fingerprint} shows the fingerprint to compare over another channel (in person, by phone) before trusting an imported key. Until the key has been certified, GnuPG refuses to encrypt to it in non-interactive use and labels signatures by it \texttt{[unknown]}: after checking the fingerprint, certify it with \texttt{gpg --sign-key}.
     \item \texttt{--encrypt -r} is hybrid encryption to recipient \texttt{-r}. Inspecting the result with \texttt{gpg --list-packets} shows the structure of \cref{tab:pgp-pipeline}: a packet with the session key encrypted for the recipient's key ID, then the AES-256 encrypted data in an authenticated (OCB) mode, containing a compressed packet with the literal data.
     \item Three kinds of signature: \texttt{--clearsign} (readable text plus signature), \texttt{--sign} (binary, compressed signed file), \texttt{--detach-sign} (signature in a separate file). \texttt{--verify} prints \texttt{Good signature}, or \texttt{BAD signature} if even one character of the file has changed.
+\end{itemize}
+
+\paragraph{What went wrong in the class demo.} Two things, both instructive.
+\begin{itemize}
+    \item \texttt{gpg --gen-key} (name, e-mail, passphrase) stalled, asking for more random bytes: key generation needs fresh randomness (\cref{sec:base-mechanisms}), and the terminal session he was using had little activity to collect it from. He suggested generating keys from a normal desktop session.
+    \item All his old keys had \textbf{expired}, so \texttt{--clearsign} refused to sign (\texttt{gpg: skipped \dots: Unusable secret key}, then \texttt{clear-sign failed: Unusable secret key}). For the same reason he could not encrypt to anyone, since encryption needs a valid public key of the recipient. An expired key can be revived by its owner with \texttt{gpg --quick-set-expire <fingerprint> 1y}.
 \end{itemize}
 
 \begin{remark}[PGP today]

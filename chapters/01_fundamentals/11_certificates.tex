@@ -1,4 +1,5 @@
-% Source: Romandini, 09_Certificates slides (written from the slides only);
+% Source: Romandini, 09_Certificates slides and online lecture of 20 Nov 2026
+%         (about one hour, with a live look at the certificates of unibo.it and google.com);
 %         ExMaster exercise slides (inspecting a certificate chain).
 \section{Certificates and Public Key Infrastructure}
 \label{sec:pki}
@@ -107,6 +108,10 @@ The collection of hardware, software, people, policies, and protocols needed to 
 \end{enumerate}
 The private key never leaves the subject: the request (a \emph{certificate signing request}) contains only the public key and is signed with the private key, which proves possession.
 
+In the lecturer's words: I generate my key pair myself, go to the CA (possibly in person, since they must check my identity card), and hand over the public key, out of band. The CA signs a certificate saying that this key belongs to me and publishes it in a public repository. From then on, to prove who I am, I just send my certificate; I never need to contact the CA again. With the public-key authority, by contrast, the authority had to vouch for me in every new conversation.
+
+\paragraph{How the CAs' own keys become known.} Verifying a certificate needs the CA's public key, so that key must reach users by some other channel. Public keys of well-known entities were once printed in newspapers, and governments publish theirs on their websites. Today they are mostly pre-installed: Mozilla ships its list of trusted root certificates inside Firefox, Microsoft and Apple inside their operating systems. Hardware makers add their own: the lecturer's Windows certificate store contained certificates from Dell, the maker of his laptop, and one he had accepted to join the university Wi-Fi.
+
 \paragraph{Identification} is the critical step, since the certificate is worth exactly as much as the check behind it.
 \begin{itemize}
     \item \textbf{Out-of-band}: with traditional means (mail, fax, telephone, a face-to-face meeting with an identity document).
@@ -134,6 +139,23 @@ Certification is based on trust: users trust the CA to issue only certificates t
 
 The CAs form a rooted tree, and the trust placed in a root cannot be established by cryptography: a root certificate is \emph{self-signed}, so its signature proves nothing about who owns it. It is trusted because it is pre-installed in the operating system or browser \emph{trust store}, and it gets there through reputation, experience, audits of operational competence, and other non-technical means. Anyone acting as a CA must be trusted to be both secure and correct. Root keys are usually kept offline, in hardware security modules, and day-to-day certificates are issued by intermediates, which can be revoked and replaced without touching the root.
 
+The lecturer gave a practical reason for the hierarchy as well: if identification means going to the CA in person, a handful of root CAs (governments, major tech companies) cannot do it for the whole world, so you identify yourself at an intermediate CA near you. When he asked in class who signs the root's certificate, the answer was that the root signs its own. That is acceptable because roots are global entities with other ways to deliver their keys: Microsoft or Apple put them inside the operating system of every computer they sell.
+
+\begin{remark}[Cross-signing]
+Beyond the slides. A student asked whether roots could sign each other instead. They do, in a limited way: a new root often gets a second certificate, signed by an older root that is already in many trust stores, so that old devices that do not know the new root can still build a chain. This does not create a cycle, because each client stops at the first root it already trusts. Both certificates shown in class carry such a cross-signature (checked with \texttt{openssl s\_client} on 21 November 2026): \texttt{unibo.it} is issued by \emph{GEANT TLS RSA 1}, under \emph{HARICA TLS RSA Root CA 2021}, which the server also sends signed by the older \emph{Hellenic Academic and Research Institutions RootCA 2015}. \texttt{www.google.com} is issued by \emph{WE2} of Google Trust Services, under \emph{GTS Root R4}, cross-signed by \emph{GlobalSign Root CA}.
+\end{remark}
+
+\begin{remark}[Self-signed certificates]
+Another student asked whether one can sign a certificate oneself with OpenSSL. Yes:
+\begin{minted}{bash}
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem \
+        -days 30 -subj "/CN=Nicolo Romandini"
+openssl verify cert.pem                  # error 18: self-signed certificate
+openssl verify -CAfile cert.pem cert.pem # cert.pem: OK
+\end{minted}
+The certificate says \enquote{this key belongs to Nicolò, and Nicolò vouches for it}: on the Internet that proves nothing, since you do not know who Nicolò is in the first place. It is fine in a private system or for testing, where you install the certificate yourself as trusted, which is exactly what \texttt{-CAfile} does.
+\end{remark}
+
 \subsection{Validation}
 
 Before using a certificate, the verifier checks that it
@@ -144,6 +166,10 @@ Before using a certificate, the verifier checks that it
     \item has \textbf{not been revoked}.
 \end{itemize}
 (Beyond the slides, it also checks that the certificate is meant for this use: the name in the SAN matches the site, and the key usage allows it.) The first three checks can be done locally and offline, as the VerificaC19 app did for the Italian Green Pass, a scheme that ended in 2023: the app only needed the public keys of the issuing authorities. Checking revocation is harder.
+
+\paragraph{Walking the chain, as explained in class.} The verifier does not always have to reach the root. It climbs the chain one certificate at a time and stops at the first one it already trusts, i.e.\ one in its trust store: a trusted intermediate is enough. If it reaches the top without finding any, the site cannot be trusted, and the browser shows its warning page (you may proceed at your own risk, and the connection is no longer marked as secure). The browser does all of this automatically. It may also cache intermediate certificates of sites visited often, and you can install a site's certificate yourself, so that it is trusted directly.
+
+\paragraph{What TLS authenticates.} In TLS (\cref{sec:key-distribution}) the certificate proves that the \emph{server} is who it claims to be, e.g.\ that \texttt{unibo.it} really belongs to the University of Bologna, so that the session key agreed with it is not shared with a man in the middle. Users normally have no certificate: they prove who they are afterwards, by logging in (\cref{sec:user-auth}).
 
 \paragraph{Inspecting a chain.} An exercise of the lab slides. On a real site:
 \begin{minted}{bash}
@@ -173,6 +199,10 @@ The check can be done
     \item \textbf{Push lists}: browsers download compact, frequently updated lists of revoked certificates (Firefox's CRLite and OneCRL, Chrome's CRLSets).
 \end{itemize}
 
+\begin{remark}[OCSP as described in class]
+In class OCSP was described as servers that periodically ask every CA for newly revoked certificates and hand out a base list plus deltas. That describes CRL distribution and the browser-pushed lists above. OCSP proper is a query about \emph{one} certificate, answered by a signed response.
+\end{remark}
+
 \subsection{Certificate Transparency}
 
 Certificate Transparency (CT) makes every issued certificate public. CAs submit certificates to public, \textbf{append-only logs} (built on Merkle trees, \cref{fig:merkle-tree}, so that nothing can be removed or changed without detection), and receive a signed timestamp to embed in the certificate; browsers require such proof that the certificate was logged. Domain owners can then \textbf{monitor} the logs and detect any certificate issued for their names without their knowledge. CT does not prevent misissuance, but it makes it visible, and quickly.
@@ -183,7 +213,7 @@ Certificate Transparency (CT) makes every issued certificate public. CAs submit 
     \item Eight intermediate CA certificates of eMudhra, an Indian CA (six for TLS, two for code signing), had P-384 private keys that were tiny numbers: 4, 56, 66, 115, 155, 156, 230, 237. Anyone could try the 256 smallest values and recover them \cite{mozilla2026emudhra}.
     \item Whoever holds an intermediate CA key can issue certificates that browsers accept for \emph{any} domain: a valid certificate for \texttt{google.com} or for any bank.
     \item Cause, according to eMudhra: a changed step in the key ceremony and a flawed script produced a second, weak set of keys in 2025, which was then used by mistake.
-    \item Response: browsers and operating systems blocked the keys between 17 and 22 October 2026 (Mozilla and Chrome first, then Microsoft and Apple); all eight intermediates were revoked, Mozilla removed the issuing root, and eMudhra is winding down its public TLS business.
+    \item Response: browsers and operating systems blocked the keys between 17 and 22 October 2026 (Mozilla and Chrome first, then Microsoft and Apple); all eight intermediates were revoked, Mozilla removed the issuing root, and eMudhra is winding down its public TLS business. As the lecturer pointed out, revoking an intermediate invalidates every certificate below it in the tree: eMudhra's customers had to obtain new certificates from another CA.
     \item CT made the abuse visible: 107{,}107 certificates signed with six of the keys were logged on 20--21 October, 106{,}050 of them proofs of concept for \texttt{google.com}.
     \item Precedents: \textbf{DigiNotar} (2011), a Dutch CA that was hacked and issued fraudulent certificates (including one for \texttt{*.google.com} used to spy on users in Iran), was removed from all trust stores and went bankrupt; \textbf{Symantec} (2017--2018) was distrusted by browsers after repeated misissuance and sold its CA business to DigiCert.
 \end{itemize}

@@ -1,5 +1,6 @@
 % Source: Romandini, 04_SymmetricEncryption
-% Lectures: 14 Nov 2026, morning (from the Caesar cipher) and afternoon (up to authenticated encryption)
+% Lectures: 14 Nov 2026, morning (from the Caesar cipher) and afternoon (up to authenticated encryption);
+%           20 Nov 2026, recap of XOR and of the BEAST attack at the start of the lecture.
 \section{Symmetric Encryption}
 \label{sec:symmetric}
 
@@ -439,6 +440,8 @@ Bob's software computes $E_K(P^{*} \xor R) = E_K(G \xor C_1 \xor R \xor R) = E_K
 \end{example}
 
 The fix is a fresh, unpredictable IV for every record (TLS 1.1 onwards). The lecturer said not to memorise the byte-level details; what matters is the principle: \emph{a predictable IV lets the attacker make the server encrypt chosen data under a known chaining value, and compare the result with intercepted ciphertext}.
+
+\paragraph{The recap of 20 November.} The lecturer went over BEAST again on the whiteboard, starting from ECB. There, the attacker who suspects that block $C_2$ hides \texttt{Kim} simply asks the server to encrypt \texttt{Kim}: ECB is deterministic, so an equal output confirms the guess. A random IV stops this, because the same plaintext now gives a different block. TLS~1.0 brought the problem back by making the next IV predictable. The XOR facts the attack rests on are $x \xor x = 0$, $x \xor 0 = x$, and commutativity. In his version the next IV was $C_2$ itself (the last block sent), so the attacker injects $G \xor C_1 \xor C_2$, and the server computes $E_K(G \xor C_1 \xor C_2 \xor C_2) = E_K(G \xor C_1)$, which equals $C_2$ exactly when the guess is right. He repeated that the exam will not ask you to replay the attack. Instead it may ask a question such as \emph{\enquote{What was the problem in TLS~1.0 that led to the BEAST attack?}} (answer: the IV was predictable), either open or as a multiple choice.
 
 \subsubsection{Cipher Feedback (CFB)}
 

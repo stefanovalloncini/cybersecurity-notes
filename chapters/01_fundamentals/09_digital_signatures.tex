@@ -1,4 +1,5 @@
-% Source: Romandini, 07_CryptographyAuthentication slides (written from the slides only).
+% Source: Romandini, 07_CryptographyAuthentication slides; online lecture of 20 Nov 2026
+%         (covered quickly as a recap, plus the collision example at the start of the lecture).
 \section{Authentication and Digital Signatures}
 \label{sec:signatures}
 
@@ -55,6 +56,12 @@ Only the holder of the private key can sign; anyone with the public key can veri
 \subsection{Hash-then-sign}
 
 Signatures are computed on a \emph{digest} of the message, not on the message itself (\cref{fig:sign-process}): the digest is short and has fixed size, so signing is fast whatever the length of the document, and RSA only works on values smaller than the modulus. The price is that the signature is only as strong as the hash: if an attacker finds two documents with the same digest, a signature on one is valid for the other, so the hash must be \emph{collision resistant} (\cref{sec:base-mechanisms}).
+
+\begin{example}[The contract, from class]
+I draft a contract $M_1$ saying that you owe me 100 euros. You read it, hash it, sign the digest, and send the signature back. But I wrote $M_1$, and in advance I also prepared $M_2$, saying 1000 euros, with $H(M_2) = H(M_1)$. I take $M_2$ to a lawyer: your signature verifies on it, and nobody can tell which document you actually signed. Since the attacker chose \emph{both} documents, the property at stake is collision resistance, which is the easier one to break (about $2^{n/2}$ work).
+
+If instead $M_1$ is fixed (you wrote it, and I cannot touch it), I need a \emph{second preimage}: a different document with the same digest as yours, which is far harder (about $2^{n}$). The lecturer added that even a $M_2$ found that way would probably be nonsense, something like a contract dated 1 December 1800, and easy to spot as fabricated. Practical collision attacks avoid that problem by hiding the meaningless collision blocks in parts of a file that nobody reads.
+\end{example}
 
 \begin{figure}[H]
 \centering
@@ -158,7 +165,7 @@ The first line prints \texttt{64 True}: an Ed25519 signature is 64 bytes, and si
 \subsection{Signatures and trust}
 
 \begin{itemize}
-    \item Non-repudiation needs a trusted binding between a public key and an identity: \textbf{certificates} (\cref{sec:pki}).
+    \item Non-repudiation needs a trusted binding between a public key and an identity: \textbf{certificates} (\cref{sec:pki}). As the lecturer put it, anybody can generate a key pair and announce the public key as Paolo Rossi's; nothing in the key itself ties it to a real person, company, or website.
     \item In the EU, the eIDAS Regulation distinguishes simple, advanced, and \textbf{qualified electronic signatures}. A qualified signature is created with a qualified signature-creation device (a smart card, a token, or a remote signing service run by a qualified provider) and based on a qualified certificate; it has the \emph{same legal value as a handwritten signature} in every member state. The Italian \emph{firma digitale} is of this kind.
     \item A signature is only as trustworthy as the \textbf{key generation}: in October 2026 some keys of the certification authority eMudhra turned out to be tiny numbers (4, 56, 66, \dots), so anybody could sign in its name (\cref{sec:base-mechanisms}).
 \end{itemize}
